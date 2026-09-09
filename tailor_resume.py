@@ -26,6 +26,7 @@ from urllib.request import Request, urlopen
 
 import fit
 import qa
+import usage
 
 _HERE = Path(__file__).parent
 
@@ -166,44 +167,20 @@ def _fetch_raw(url: str) -> str:
 # ---------------------------------------------------------------------------
 
 # Claude Opus 5 list pricing, USD per million tokens.
-PRICE_IN, PRICE_OUT = 5.00, 25.00
-PRICE_CACHE_WRITE, PRICE_CACHE_READ = 6.25, 0.50
+# Token accounting lives in usage.py -- it must not sit in a module that can
+# also be __main__, or a second copy of it keeps its own totals. These names
+# are kept so existing callers (and anyone's fork) do not break.
+PRICE_IN, PRICE_OUT = usage.PRICE_IN, usage.PRICE_OUT
+PRICE_CACHE_WRITE, PRICE_CACHE_READ = usage.PRICE_CACHE_WRITE, usage.PRICE_CACHE_READ
 
-_usage = {"in": 0, "out": 0, "cache_write": 0, "cache_read": 0, "calls": 0}
-
-
-def record_usage(response):
-    """Accumulate token usage from a response. Costs nothing extra."""
-    u = getattr(response, "usage", None)
-    if not u:
-        return response
-    _usage["calls"] += 1
-    _usage["in"] += getattr(u, "input_tokens", 0) or 0
-    _usage["out"] += getattr(u, "output_tokens", 0) or 0
-    _usage["cache_write"] += getattr(u, "cache_creation_input_tokens", 0) or 0
-    _usage["cache_read"] += getattr(u, "cache_read_input_tokens", 0) or 0
-    return response
+usage_scope = usage.scope
+record_usage = usage.record
+usage_cost = usage.cost
+usage_line = usage.line
 
 
 def usage_report() -> str:
-    cost = (_usage["in"] * PRICE_IN
-            + _usage["out"] * PRICE_OUT
-            + _usage["cache_write"] * PRICE_CACHE_WRITE
-            + _usage["cache_read"] * PRICE_CACHE_READ) / 1_000_000
-    parts = [
-        f"{_usage['calls']} API call(s)",
-        f"{_usage['in']:,} in",
-        f"{_usage['out']:,} out",
-    ]
-    if _usage["cache_read"] or _usage["cache_write"]:
-        parts.append(f"{_usage['cache_read']:,} cached read")
-        parts.append(f"{_usage['cache_write']:,} cache write")
-    line = f"  {' | '.join(parts)}  ~${cost:.3f}"
-    # A zero cache read across a run means the master-resume breakpoint is not
-    # hitting and every call is paying full price for it.
-    if _usage["calls"] > 1 and _usage["cache_read"] == 0 and _usage["cache_write"]:
-        line += "\n  \u26a0  cache written but never read \u2014 the prompt prefix is changing between calls"
-    return line
+    return usage.line(usage.now())
 
 
 def extract_json(response) -> dict:
@@ -854,48 +831,55 @@ def main():
     parser.add_argument("--no-qa", action="store_true", help="Skip the QA pass")
     args = parser.parse_args()
 
-    if args.url:
-        print(f"Fetching job posting from {args.url}...")
-        job_posting = fetch_url(args.url)
-        print(f"  Extracted {len(job_posting)} chars")
-        if len(job_posting) < 500:
-            print("  \u26a0  That looks too short to be a real posting \u2014 the page may be")
-            print("     login-walled or bot-blocked. Try --file or --text instead.")
-    elif args.file:
-        job_posting = Path(args.file).read_text()
+    # Imported here, not at module scope: pipeline imports this module, and a
+    # top-level import either way would be circular.
+    import pipeline
+
+    posting_text = ""
+    if args.file:
+        posting_text = Path(args.file).read_text()
     elif args.text:
-        job_posting = args.text
-    elif not sys.stdin.isatty():
-        job_posting = sys.stdin.read()
-    else:
+        posting_text = args.text
+    elif not args.url and not sys.stdin.isatty():
+        posting_text = sys.stdin.read()
+    elif not args.url:
         parser.print_help()
         sys.exit(1)
 
     resume = json.loads(MASTER_RESUME.read_text())
     client = make_client()
 
-    print("Analyzing job posting...")
-    analysis = analyze_job(client, job_posting)
-    print(f"  Track:   {analysis['track']}")
-    print(f"  Tone:    {analysis['tone']}")
-    print(f"  Stage:   {analysis['company_stage']}")
-    print(f"  Flavor:  {analysis.get('role_flavor', '?')}")
-    print(f"  Themes:  {', '.join(analysis['key_themes'])}")
-    print(f"  ATS:     {', '.join(analysis['ats_keywords'][:6])}")
+    def show(stage, message, result):
+        """Print what the CLI has always printed, driven by pipeline stages."""
+        if stage == "fetch":
+            print(f"Fetching job posting from {args.url}...")
+        elif stage == "analyze":
+            if result.posting_chars:
+                print(f"  Extracted {result.posting_chars} chars")
+            print("Analyzing job posting...")
+        elif stage == "fit":
+            a = result.analysis
+            print(f"  Track:   {a['track']}")
+            print(f"  Tone:    {a['tone']}")
+            print(f"  Stage:   {a['company_stage']}")
+            print(f"  Flavor:  {a.get('role_flavor', '?')}")
+            print(f"  Themes:  {', '.join(a['key_themes'])}")
+            print(f"  ATS:     {', '.join(a['ats_keywords'][:6])}")
+            print("\nShould you apply?")
+        elif stage == "tailor":
+            if result.assessment:
+                print(fit.format_report(result.assessment))
+            print("\nTailoring resume...")
+        elif stage == "pdf":
+            print("Generating scroll PDF...")
+        elif stage == "warn":
+            print(f"  \u26a0  {message}")
 
-    print("\nShould you apply?")
-    assessment = None
-    try:
-        assessment = fit.assess(client, analysis, resume, MODEL)
-        print(fit.format_report(assessment))
-    except Exception as e:
-        print(f"  \u26a0  Fit assessment failed ({type(e).__name__}: {e})")
+    run = pipeline.run(resume=resume, client=client, url=args.url or "",
+                       text=posting_text, company=args.company,
+                       progress=show, do_qa=not args.no_qa)
 
-    print("\nTailoring resume...")
-    tailored = tailor_resume(client, resume, analysis, job_posting)
-
-    # --company wins; otherwise fall back to the name Claude read off the posting.
-    company = args.company or analysis.get("company", "")
+    company = run.company
     if not args.company and company:
         print(f"  Company detected: {company}")
 
@@ -908,42 +892,31 @@ def main():
     else:
         html_path, pdf_path = Path(f"{stem}.html"), Path(f"{stem}_Scroll.pdf")
 
-    html_content = render_html(tailored, resume)
-    html_path.write_text(html_content)
+    html_path.write_text(run.html)
     print(f"\nHTML written to: {html_path}")
-
-    print("Generating scroll PDF...")
-    with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w") as tmp:
-        tmp.write(html_content)
-        tmp_path = Path(tmp.name)
-
-    try:
-        generate_scroll_pdf(tmp_path, pdf_path)
-    finally:
-        tmp_path.unlink(missing_ok=True)
-
+    pdf_path.write_bytes(run.pdf)
     print(f"PDF written to:  {pdf_path}")
 
     print("\nUsage:")
-    print(usage_report())
+    print(usage_line(run.usage))
 
     print("\nTailoring decisions:")
-    for change in tailored.get("changes_summary", []):
-        print(f"  • {change}")
+    for change in run.tailored.get("changes_summary", []):
+        print(f"  \u2022 {change}")
 
     failed = False
     if not args.no_qa:
         print("\nQA:")
-        issues = qa.verify(tailored, resume, analysis, html_content)
-        print(qa.format_report(issues))
-        failed = qa.has_errors(issues)
+        print(qa.format_report(run.issues))
+        failed = run.has_errors
 
     if not args.no_log:
         if failed:
             print("\nSkipping application log — QA failed.")
         else:
             print("\nLogging application...")
-            log_application(company or "Unknown", analysis, pdf_path, html_path, assessment)
+            log_application(company or "Unknown", run.analysis, pdf_path, html_path,
+                            run.assessment)
 
     if failed and args.strict:
         sys.exit(1)

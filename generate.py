@@ -23,7 +23,13 @@ import sys
 from datetime import date
 from pathlib import Path
 
-COST_PER_ROLE = 0.14  # measured: analyze + tailor, with the resume cached
+# Rough, and deliberately labelled as such. The old 0.14 was measured while the
+# CLI was silently omitting the fit call from its own accounting (see usage.py),
+# so it was a floor, not an estimate. A cold single run now measures ~$0.30; a
+# batch is cheaper because the resume block is cached across roles, and the hit
+# rate varies with how many roles run back to back. Treat this as an order of
+# magnitude for the dry run, not a bill.
+COST_PER_ROLE = 0.20
 
 # Stop the batch rather than fail the same way for every remaining role. This
 # guard exists in rank.py and was not carried here; a run then burned through

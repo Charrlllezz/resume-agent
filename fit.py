@@ -31,6 +31,7 @@ import json
 import re
 
 import qa
+import usage
 
 # Every role on the master resume is individual-contributor. A posting that
 # requires managing people is a structural mismatch, not a keyword gap.
@@ -117,7 +118,7 @@ def assess(client, analysis: dict, resume: dict, model: str) -> dict:
                  requirements="\n".join(f"- {r}" for r in required))},
         ]}],
     )
-    tr_mod.record_usage(response)
+    usage.record(response)
     raw = "".join(b.text for b in response.content if b.type == "text").strip()
     raw = re.sub(r"^```(?:json)?\s*", "", raw)
     raw = re.sub(r"\s*```$", "", raw)

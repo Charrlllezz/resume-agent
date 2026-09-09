@@ -10,6 +10,7 @@ exactly those five.
 
 import copy
 import json
+import threading
 import sys
 from pathlib import Path
 
@@ -232,6 +233,50 @@ for headline, want_error, label in [
     got = any(i.level == qa.ERROR
               for i in qa.check_headline({"headline": headline}, _master))
     expect(got == want_error, f"{label}: {headline!r}")
+
+print("\ntoken accounting (one accumulator, whatever the import path):")
+import usage as usage_mod
+
+
+class _FakeResponse:
+    class usage:
+        input_tokens = 10
+        output_tokens = 5
+        cache_creation_input_tokens = 0
+        cache_read_input_tokens = 0
+
+
+# `python tailor_resume.py` runs that file as __main__, and fit.py reaches back
+# for it by name -- which loads a SECOND copy of the module. While the counters
+# lived in tailor_resume, each copy kept its own, so every cost the CLI printed
+# was missing the fit call. Two copies must now agree.
+_src = (Path(__file__).parent / "tailor_resume.py").read_text()
+_as_main = {"__name__": "__main__", "__file__": "tailor_resume.py"}
+exec(compile(_src.replace("\nif __name__ ==", "\nif False and __name__ =="),
+             "tailor_resume.py", "exec"), _as_main)
+with usage_mod.scope() as _totals:
+    _as_main["record_usage"](_FakeResponse())   # the copy running as __main__
+    tr.record_usage(_FakeResponse())            # the copy fit.py imports
+    expect(_totals["calls"] == 2,
+           f"both module copies count into one accumulator (got {_totals['calls']}, want 2)")
+
+# A server runs several at once; one user's spend must not appear in another's.
+_seen = {}
+
+
+def _one_run(name, calls):
+    with usage_mod.scope() as totals:
+        for _ in range(calls):
+            tr.record_usage(_FakeResponse())
+        _seen[name] = totals["calls"]
+
+
+_threads = [threading.Thread(target=_one_run, args=(f"r{i}", i + 1)) for i in range(4)]
+[t.start() for t in _threads]
+[t.join() for t in _threads]
+expect(_seen == {"r0": 1, "r1": 2, "r2": 3, "r3": 4},
+       f"concurrent runs keep separate totals (got {_seen})")
+
 
 print()
 if failures:
