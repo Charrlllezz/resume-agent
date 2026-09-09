@@ -57,20 +57,35 @@ object:
     {{
       "requirement": "the requirement, verbatim",
       "status": "met" | "partial" | "unmet",
-      "evidence": "the specific bullet or skill from the resume that supports
-                   this, quoted. Empty string if unmet."
+      "evidence": "the experience bullet from the resume that supports this,
+                   quoted verbatim. Empty string if unmet."
     }}
   ]
 }}
 
 Rules:
-- "met" requires concrete evidence in the resume. Quote it.
+- "met" requires an experience bullet describing the candidate DOING this, and
+  you must quote that bullet.
+- A name in the skills list is a claim, not evidence. "Webhooks" appearing under
+  skills is at most "partial" on its own -- it says the candidate would list it,
+  not that they have shipped anything with it. Only an experience bullet can
+  make a requirement "met".
+- Each bullet is primary evidence for ONE requirement. If the same bullet is the
+  only support for a second requirement, that second one is "partial" -- one
+  piece of work does not independently satisfy four separate must-haves.
 - "partial" means adjacent or transferable experience, not the thing itself.
-- "unmet" means no supporting evidence. Say unmet rather than stretching.
+- "unmet" means no supporting experience. Say unmet rather than stretching.
 - Never credit a requirement to evidence that is not in the resume above.
 - Judge the substance, not the wording: a requirement phrased as "working with
   non-technical stakeholders" is met by bullets showing cross-functional work,
-  even though the resume never uses that phrase."""
+  even though the resume never uses that phrase. This is about vocabulary, not
+  about lowering the bar for evidence.
+
+Calibration. Almost every real candidate has gaps against a real posting; a
+posting is a wish list, not a description of one person. Judging every
+requirement "met" is nearly always a sign the bar slipped, not a strong
+candidate. Years-of-experience and seniority requirements are the exception --
+judge those against the actual role history and dates."""
 
 
 # In GTM and CS, "Manager" is usually an individual-contributor title --

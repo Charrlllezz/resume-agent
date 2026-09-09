@@ -132,7 +132,8 @@ rather than failing the same way for every remaining role.
 | `gaps.py roles.tsv` | What vocabulary is your resume systematically missing across many postings? |
 | `resolve_urls.py saved.tsv` | Turn a list of company + title into real posting URLs. Writes `*_candidates.tsv` for roles that may be posted under another name. |
 | `roles.py` | Role families: is a differently-worded title the same job? Imported, not run. |
-| `test_qa.py` | The test suite. Run it after changing `qa.py` or the prompts. |
+| `test_qa.py` | The test suite: QA, provenance, token accounting. Free and offline. Run it after changing `qa.py` or the prompts. |
+| `test_fit.py` | An eval for whether the fit assessment still discriminates. Calls the model, so it costs about $0.07 a run. |
 
 `roles.tsv` and `resolved.tsv` are TSVs of `track⇥company⇥title⇥url`.
 See `saved_jobs.example.tsv` and `resolved.example.tsv` for the input formats.
@@ -175,11 +176,14 @@ that deleting a file later doesn't remove it from history.
   approximate posting.
 - Fit verdicts on borderline roles can shift one level between runs. Read the
   unmet-requirements list, which is stable, not the label.
-- Fit scores do not rank a list you already curated. On 58 hand-saved jobs, 52
-  came back "Strong" and 35 had nothing unmet — there was nothing left to
-  separate. `rank.py` buckets instead, on what changes the decision: apply,
-  apply with an answer ready, a gap you can't close tonight, or a different
-  job. The buckets key off the unmet list, not the score.
+- Fit scores are for reading, not for ranking. `rank.py` sorts into buckets --
+  apply, apply with an answer ready, a gap you can't close tonight, a different
+  job -- because those change what you do and a position in an ordered list
+  does not. The buckets key off the unmet list, not the score.
+- An assessment run before the rules tightened is not comparable to one after.
+  The old prompt accepted a name in the skills list as evidence, so across 58
+  real postings 52 came back "Strong" and 35 had nothing unmet at all. Delete
+  `rank_cache.json` if you want a list re-judged.
 - QA verifies *provenance*, not truth. It proves the output matches your master
   resume. If that file overstates, QA will certify the overstatement.
 
