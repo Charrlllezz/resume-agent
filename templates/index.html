@@ -7,6 +7,8 @@
      in the result against your master resume before it will show it to you.</p>
 </section>
 
+{% if error %}<p class="banner bad">{{ error }}</p>{% endif %}
+
 {% if using_sample %}
 <p class="banner">
   Running on <code>master_resume.example.json</code> — a fictional person.

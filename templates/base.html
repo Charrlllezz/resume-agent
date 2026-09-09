@@ -9,7 +9,14 @@
 <body>
 <header class="top">
   <a class="wordmark" href="{{ url_for('index') }}">resume<span>-agent</span></a>
-  {% block topright %}{% endblock %}
+  <nav class="nav">
+    {% block topright %}{% endblock %}
+    {% if hosted %}
+    <form method="post" action="{{ url_for('signout') }}" class="inline">
+      <button class="btn ghost" type="submit">Sign out</button>
+    </form>
+    {% endif %}
+  </nav>
 </header>
 <main>{% block body %}{% endblock %}</main>
 </body>

@@ -140,6 +140,52 @@ moment it lands, and roles already on disk are skipped, so an interrupted run
 resumes instead of re-paying. Both stop the sweep on a credit-balance error
 rather than failing the same way for every remaining role.
 
+## Hosting it
+
+```bash
+fly launch --no-deploy          # writes app name and region into fly.toml
+fly secrets set SECRET_KEY=$(python -c "import secrets;print(secrets.token_hex(32))")
+fly deploy
+```
+
+`fly deploy` builds on Fly's remote builder, so Docker isn't needed locally.
+
+Hosted, the app runs in a different mode: **every visitor brings their own
+Anthropic API key**, and their resume lives in their session. Set by
+`RESUME_AGENT_HOSTED=1`, which the Dockerfile and `fly.toml` both set.
+
+**Never put `ANTHROPIC_API_KEY` in the server's environment.** Hosted mode
+takes a key per session; a key sitting in the process environment is one the
+SDK can fall back to, which would mean strangers spending your money.
+
+What is and isn't kept:
+
+| | |
+|---|---|
+| API key | In memory, for the session. Not on disk, not in the cookie, not logged. |
+| Resume | In memory, for the session. Never written to disk. |
+| Cookie | An opaque session id. It is signed but **not encrypted**, which is exactly why nothing else is in it. |
+| Idle sessions | Dropped after two hours, taking the key with them. |
+
+Three constraints are load-bearing, and all three are commented where they
+live:
+
+- **One gunicorn worker, many threads.** Sessions live in the worker's memory,
+  so a second worker is a second, separate set of them and half a user's
+  requests land somewhere that has never heard of their session. Scale with
+  threads and more machines, not more workers.
+- **The Playwright pin in `requirements.txt` must match the Dockerfile base
+  image tag.** The image ships the browsers that package version expects.
+- **Fonts are installed into the image.** The resume stylesheet pulls IBM Plex
+  and Space Grotesk from Google at print time; if that fetch fails the PDF
+  still renders, with different fonts, different metrics and a different page
+  height, and no error. Local copies make the output the same either way.
+
+Posting URLs are attacker-controlled when hosted, so they are checked against
+private, loopback, link-local and `.internal` addresses before anything is
+fetched — otherwise "tailor my resume to this URL" is a request-forgery
+primitive pointed at cloud metadata.
+
 ## The other tools
 
 | Script | What it answers |

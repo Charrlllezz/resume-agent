@@ -1,5 +1,7 @@
 anthropic>=0.40.0
-playwright>=1.40.0
+# Pinned, and pinned to the same version as the Dockerfile base image. They
+# move together or Playwright cannot find its browser.
+playwright==1.62.0
 flask>=3.0.0
 pypdf>=4.0.0
 python-docx>=1.1.0

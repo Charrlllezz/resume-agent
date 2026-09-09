@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Start · resume-agent{% endblock %}
+{% block body %}
+<section class="hero">
+  <h1>Bring your own key</h1>
+  <p class="sub">This runs on your Anthropic account, not mine. A tailored
+     resume costs roughly 20–30 cents in tokens.</p>
+</section>
+
+{% if error %}<p class="banner bad">{{ error }}</p>{% endif %}
+
+<form method="post" class="card">
+  <label for="api_key">Anthropic API key</label>
+  <input id="api_key" name="api_key" type="password" autocomplete="off"
+         spellcheck="false" placeholder="sk-ant-…" required autofocus>
+  <p class="hint">From <code>console.anthropic.com</code> → API keys.</p>
+  <button type="submit">Continue</button>
+</form>
+
+<section class="card">
+  <h2>What happens to the key</h2>
+  <p>It's held in memory on the server for as long as you're using the page,
+     and dropped after two hours idle or when you sign out. It is
+     <strong>not</strong> written to disk, not put in the cookie, and not
+     logged. The cookie holds a random id and nothing else.</p>
+  <p class="hint">The cookie is signed but not encrypted, which is exactly why
+     the key isn't in it — anything there is readable by whoever holds it.</p>
+  <h2 style="margin-top:26px">And to your resume</h2>
+  <p>Same: it lives in your session and is never written to disk. Close the tab
+     and come back tomorrow, and you'll upload it again. That's the trade for
+     not storing other people's resumes on a server.</p>
+</section>
+
+<section class="card">
+  <h2>Or run it yourself</h2>
+  <p class="hint">It's a small Python project — clone it, and your key and your
+     resume never leave your machine.</p>
+</section>
+{% endblock %}

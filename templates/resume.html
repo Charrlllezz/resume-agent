@@ -13,6 +13,8 @@
 {% if using_sample %}
 <p class="banner">No master resume yet — running on the fictional sample.
    Upload yours below.</p>
+{% elif not resume %}
+<p class="banner">Nothing loaded yet. Upload a resume to get started.</p>
 {% else %}
 <section class="card">
   <h2>Loaded</h2>

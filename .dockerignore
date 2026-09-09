@@ -1,0 +1,17 @@
+.git
+.gitignore
+.venv
+__pycache__
+*.pyc
+resumes/
+master_resume.json
+master_resume.backup.json
+applications.csv
+tracker.csv
+*.log
+*.tsv
+!*.example.tsv
+rank_cache.json
+compare_cache.json
+compare_results.json
+.env

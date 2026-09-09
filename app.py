@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
-"""Local web UI for the resume agent.
+"""Web UI for the resume agent.
 
 Paste a job posting URL, get the tailored resume plus everything the pipeline
 knows about the role -- the per-requirement fit evidence, the QA findings, the
 tailoring decisions, the ATS gaps. A spreadsheet row holds about a tenth of
 that; the rest was being generated and thrown away.
 
-Run it:  python app.py   ->  http://127.0.0.1:5000
+  python app.py                          local, one user, key from .env
+  RESUME_AGENT_HOSTED=1 gunicorn ...     hosted, each visitor brings their own
 
-This is the single-user local build. It trusts whoever can reach the port,
-reads the API key from .env, and keeps jobs in memory. The hosted build adds
-per-request keys, a real queue, and storage -- see README.
+One app rather than two, because two would drift. Local mode is a session
+seeded from disk at startup; hosted mode makes every visitor supply their own
+key and resume. See sessions.py for what is and is not kept.
 """
 
 import json
+import os
 import re
 import secrets
 import threading
@@ -21,24 +23,110 @@ import traceback
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from flask import (Flask, abort, jsonify, redirect, render_template, request,
-                   Response, url_for)
+from flask import (Flask, abort, g, jsonify, redirect, render_template, request,
+                   Response, session, url_for)
 
 import ingest
 import pipeline
 import qa
+import sessions
 import tailor_resume as tr
 
 app = Flask(__name__)
 
-# One run takes 40-90s, which is far too long to hold a request open, so runs
-# happen on a worker thread and the page polls. In memory is honest for a
-# single-user local tool: nothing here is worth persisting, and a restart
-# losing an in-flight run costs one re-run.
-JOBS: dict[str, "Job"] = {}
-JOBS_LOCK = threading.Lock()
-MAX_JOBS = 50
+# Stable across restarts in production, or every session breaks on deploy.
+app.secret_key = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    # Secure whenever hosted, because the cookie is the session. That also
+    # means a browser will not send it back over plain HTTP, so exercising
+    # hosted mode on localhost needs this switched off deliberately. It is
+    # never right in production and is named to say so.
+    SESSION_COOKIE_SECURE=(not sessions.single_user()
+                           and os.environ.get("RESUME_AGENT_INSECURE_COOKIES") != "1"),
+    MAX_CONTENT_LENGTH=8 * 1024 * 1024,
+)
 
+MAX_JOBS_KEPT = 25
+
+
+# ---------------------------------------------------------------------------
+# Errors
+# ---------------------------------------------------------------------------
+
+# Raw exception text is accurate and useless. These are the failures a real
+# posting URL actually produces, in the words of someone who wants the resume.
+ERROR_HINTS = (
+    ("nodename nor servname", "That address doesn't resolve — check the URL."),
+    ("Name or service not known", "That address doesn't resolve — check the URL."),
+    ("timed out", "The posting took too long to load. Paste the text instead."),
+    ("403", "The board refused the request — it blocks automated fetches. "
+            "Paste the posting text instead."),
+    ("404", "That posting is gone. It may have been filled or renamed."),
+    ("credit balance", "That Anthropic account is out of credit."),
+    ("authentication", "The API key was rejected. Check that it's a working "
+                       "Anthropic key."),
+    ("invalid_api_key", "The API key was rejected. Check that it's a working "
+                        "Anthropic key."),
+    ("JSONDecode", "The model returned something unparseable. Try again — this "
+                   "is usually transient."),
+)
+
+
+def friendly_error(e: Exception) -> str:
+    raw = f"{type(e).__name__}: {e}"
+    for needle, hint in ERROR_HINTS:
+        if needle.lower() in raw.lower():
+            return hint
+    # An SDK may quote the request it failed on, so never render it unredacted.
+    return sessions.redact(raw)
+
+
+# ---------------------------------------------------------------------------
+# Sessions
+# ---------------------------------------------------------------------------
+
+@app.before_request
+def attach_session():
+    g.session = sessions.STORE.get(session.get("sid"))
+
+
+def current() -> sessions.Session:
+    if not getattr(g, "session", None):
+        abort(401)
+    return g.session
+
+
+def new_session() -> sessions.Session:
+    s = sessions.STORE.create()
+    session["sid"] = s.id
+    session.permanent = False
+    return s
+
+
+def bootstrap_local():
+    """The local build's one implicit user: key from .env, resume from disk."""
+    tr.load_env()
+    s = sessions.STORE.create()
+    s.api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    s.resume = json.loads(tr.MASTER_RESUME.read_text())
+    return s
+
+
+LOCAL_SESSION = bootstrap_local() if sessions.single_user() else None
+
+
+@app.before_request
+def use_local_session():
+    if LOCAL_SESSION is not None:
+        g.session = LOCAL_SESSION
+        g.session.touch()
+
+
+# ---------------------------------------------------------------------------
+# Jobs
+# ---------------------------------------------------------------------------
 
 @dataclass
 class Job:
@@ -58,65 +146,121 @@ class Job:
             self.events.append({"stage": stage, "message": message})
 
 
-# Raw exception text is accurate and useless. These are the failures a real
-# posting URL actually produces, in the words of someone who wants the resume.
-ERROR_HINTS = (
-    ("nodename nor servname", "That address doesn't resolve — check the URL."),
-    ("Name or service not known", "That address doesn't resolve — check the URL."),
-    ("timed out", "The posting took too long to load. Paste the text instead."),
-    ("403", "The board refused the request — it blocks automated fetches. "
-            "Paste the posting text instead."),
-    ("404", "That posting is gone. It may have been filled or renamed."),
-    ("credit balance", "Your Anthropic account is out of credit."),
-    ("authentication", "The API key was rejected. Check ANTHROPIC_API_KEY in .env."),
-    ("JSONDecode", "The model returned something unparseable. Try again — this is "
-                   "usually transient."),
-)
+def remember(s: sessions.Session, job: Job):
+    s.jobs[job.id] = job
+    for old in list(s.jobs)[:-MAX_JOBS_KEPT]:
+        s.jobs.pop(old, None)
 
 
-def friendly_error(e: Exception) -> str:
-    raw = f"{type(e).__name__}: {e}"
-    for needle, hint in ERROR_HINTS:
-        if needle.lower() in raw.lower():
-            return hint
-    return raw
+def _job(job_id: str) -> Job:
+    """Only ever this session's. Jobs are per-session so a guessed id from
+    somebody else's run cannot be read back."""
+    job = current().jobs.get(job_id)
+    if not job:
+        abort(404)
+    return job
 
 
-def _resume() -> dict:
-    return json.loads(tr.MASTER_RESUME.read_text())
-
-
-def _run_job(job: Job, url: str, text: str):
+def _run_job(s: sessions.Session, job: Job, url: str, text: str):
     try:
-        job.status = "running"
-        client = tr.make_client()
-        job.result = pipeline.run(
-            resume=_resume(), client=client, url=url, text=text,
-            company=job.company,
-            progress=lambda stage, message, result: job.note(stage, message),
-        )
+        job.status = "queued"
+        # Waits for a slot rather than launching a browser regardless. A few
+        # simultaneous Chromiums will exhaust a small machine.
+        with sessions.RUN_SLOTS:
+            job.status = "running"
+            job.result = pipeline.run(
+                resume=s.resume, client=tr.make_client(s.api_key),
+                url=url, text=text, company=job.company,
+                progress=lambda stage, message, result: job.note(stage, message),
+            )
         job.company = job.result.company or job.company
         job.status = "done"
     except Exception as e:
         job.status = "error"
         job.error = friendly_error(e)
-        # Printed, not shown: a traceback can carry a file path or a key
-        # fragment, and the page is the wrong place for either.
         traceback.print_exc()
 
 
+# ---------------------------------------------------------------------------
+# Getting started (hosted only)
+# ---------------------------------------------------------------------------
+
+@app.get("/start")
+def start_page():
+    if sessions.single_user():
+        return redirect(url_for("index"))
+    return render_template("start.html", s=getattr(g, "session", None))
+
+
+@app.post("/start")
+def start_submit():
+    if sessions.single_user():
+        return redirect(url_for("index"))
+    s = getattr(g, "session", None) or new_session()
+    key = (request.form.get("api_key") or "").strip()
+    if key:
+        if not key.startswith("sk-"):
+            return render_template("start.html", s=s,
+                                   error="That doesn't look like an Anthropic API "
+                                         "key — they begin with sk-.")
+        s.api_key = key
+    if not s.api_key:
+        return render_template("start.html", s=s, error="An API key is needed to run.")
+    return redirect(url_for("resume_page"))
+
+
+@app.post("/signout")
+def signout():
+    sid = session.pop("sid", None)
+    if sid:
+        sessions.STORE.drop(sid)
+    return redirect(url_for("start_page"))
+
+
+def needs_setup():
+    """Where to send someone who cannot run yet, or None if they can."""
+    if sessions.single_user():
+        return None
+    s = getattr(g, "session", None)
+    if not s or not s.api_key:
+        return redirect(url_for("start_page"))
+    if not s.resume:
+        return redirect(url_for("resume_page"))
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Tailoring
+# ---------------------------------------------------------------------------
+
 @app.get("/")
 def index():
-    resume = _resume()
+    detour = needs_setup()
+    if detour:
+        return detour
+    s = current()
     return render_template("index.html",
-                           name=resume["contact"]["name"],
-                           roles=[r["company"] for r in resume["experience"]],
-                           tracks=sorted(resume["headlines"]),
-                           using_sample=tr.MASTER_RESUME.name.endswith("example.json"))
+                           name=s.resume["contact"].get("name", ""),
+                           roles=[r["company"] for r in s.resume["experience"]],
+                           tracks=tr.tracks_for(s.resume),
+                           hosted=not sessions.single_user(),
+                           using_sample=sessions.single_user()
+                           and tr.MASTER_RESUME.name.endswith("example.json"))
 
 
 @app.post("/run")
 def start():
+    detour = needs_setup()
+    if detour:
+        return detour
+    s = current()
+    if s.runs_started >= sessions.MAX_RUNS_PER_SESSION:
+        return render_template("index.html", name=s.resume["contact"].get("name", ""),
+                               roles=[], tracks=[], hosted=not sessions.single_user(),
+                               error=f"That's {sessions.MAX_RUNS_PER_SESSION} runs this "
+                                     "session, which is the cap. Sign out and back in "
+                                     "to reset it.")
+
     url = (request.form.get("url") or "").strip()
     text = (request.form.get("text") or "").strip()
     if not url and not text:
@@ -124,29 +268,29 @@ def start():
     if url and not url.startswith(("http://", "https://")):
         url = "https://" + url
 
+    # Hosted, this URL comes from a stranger and this process will fetch it and
+    # render the result. Locally it is your own machine and pointing it at
+    # localhost is a legitimate thing to want.
+    if url and not sessions.single_user():
+        refusal = sessions.safe_url(url)
+        if refusal:
+            return render_template(
+                "index.html", name=s.resume["contact"].get("name", ""),
+                roles=[r["company"] for r in s.resume["experience"]],
+                tracks=tr.tracks_for(s.resume), error=refusal)
+
     job = Job(id=secrets.token_urlsafe(8), url=url,
               company=(request.form.get("company") or "").strip())
-    with JOBS_LOCK:
-        JOBS[job.id] = job
-        for old in list(JOBS)[:-MAX_JOBS]:
-            JOBS.pop(old, None)
-    threading.Thread(target=_run_job, args=(job, url, text), daemon=True).start()
+    remember(s, job)
+    s.runs_started += 1
+    threading.Thread(target=_run_job, args=(s, job, url, text), daemon=True).start()
     return redirect(url_for("job_page", job_id=job.id))
-
-
-def _job(job_id: str) -> Job:
-    job = JOBS.get(job_id)
-    if not job:
-        abort(404)
-    return job
 
 
 @app.get("/job/<job_id>")
 def job_page(job_id):
     job = _job(job_id)
     if job.status == "error":
-        # Rendered server-side rather than left to the poll: someone reloading a
-        # failed job should not be told it is still working.
         return render_template("running.html", job=job, failed=True)
     if job.status != "done":
         return render_template("running.html", job=job)
@@ -178,8 +322,8 @@ def job_pdf(job_id):
     job = _job(job_id)
     if not job.result or not job.result.pdf:
         abort(404)
-    name = re.sub(r"[^A-Za-z0-9]+", "_",
-                  f"{_resume()['contact']['name']} Resume {job.company}").strip("_")
+    who = current().resume["contact"].get("name", "Resume")
+    name = re.sub(r"[^A-Za-z0-9]+", "_", f"{who} Resume {job.company}").strip("_")
     return Response(job.result.pdf, mimetype="application/pdf",
                     headers={"Content-Disposition": f'attachment; filename="{name}.pdf"'})
 
@@ -188,48 +332,47 @@ def job_pdf(job_id):
 # Ingestion: upload a resume, review what was read out of it, commit it
 # ---------------------------------------------------------------------------
 
-DRAFTS: dict[str, dict] = {}
-MAX_UPLOAD = 8 * 1024 * 1024
-
-
 @app.get("/resume")
 def resume_page():
-    resume = _resume()
-    return render_template("resume.html", resume=resume,
-                           using_sample=tr.MASTER_RESUME.name.endswith("example.json"),
+    if not sessions.single_user():
+        s = getattr(g, "session", None)
+        if not s or not s.api_key:
+            return redirect(url_for("start_page"))
+    s = current()
+    return render_template("resume.html", resume=s.resume,
+                           hosted=not sessions.single_user(),
+                           using_sample=sessions.single_user()
+                           and tr.MASTER_RESUME.name.endswith("example.json"),
                            bullets=sum(len(qa._flatten(r.get("bullets", {})))
-                                       for r in resume.get("experience", [])))
+                                       for r in (s.resume or {}).get("experience", [])))
 
 
 @app.post("/resume/upload")
 def resume_upload():
+    s = current()
     upload = request.files.get("file")
     if not upload or not upload.filename:
         return redirect(url_for("resume_page"))
-    data = upload.read(MAX_UPLOAD + 1)
-    if len(data) > MAX_UPLOAD:
-        return render_template("resume.html", resume=_resume(), bullets=0,
-                               error="That file is over 8MB. A resume should be "
-                                     "a fraction of that — check it is the right file.")
+    data = upload.read()
+
+    # Read off the request here, not inside the thread. The request context is
+    # gone by the time the worker runs, and touching it there raises.
+    filename = upload.filename
+    track = (request.form.get("track") or "").strip() or "general"
 
     draft_id = secrets.token_urlsafe(8)
     job = Job(id=draft_id)
-    JOBS[draft_id] = job
-
-    # Read off the request here, not inside the thread. The request context is
-    # gone by the time the worker runs, and touching it there raises rather
-    # than returning a default.
-    filename = upload.filename
-    track = (request.form.get("track") or "").strip() or "general"
+    remember(s, job)
 
     def work():
         try:
             job.status = "running"
             job.note("analyze", "Reading the document")
-            draft, document, issues = ingest.ingest(
-                tr.make_client(), data, filename, track=track)
-            DRAFTS[draft_id] = {"draft": draft, "document": document,
-                                "issues": issues, "filename": filename}
+            with sessions.RUN_SLOTS:
+                draft, document, issues = ingest.ingest(
+                    tr.make_client(s.api_key), data, filename, track=track)
+            s.drafts[draft_id] = {"draft": draft, "document": document,
+                                  "issues": issues, "filename": filename}
             job.status = "done"
         except Exception as e:
             job.status = "error"
@@ -242,12 +385,13 @@ def resume_upload():
 
 @app.get("/resume/review/<draft_id>")
 def resume_review(draft_id):
+    s = current()
     job = _job(draft_id)
     if job.status == "error":
         return render_template("running.html", job=job, failed=True)
-    if draft_id not in DRAFTS:
+    if draft_id not in s.drafts:
         return render_template("running.html", job=job, ingesting=True)
-    d = DRAFTS[draft_id]
+    d = s.drafts[draft_id]
     return render_template("review.html", draft_id=draft_id, d=d,
                            draft=d["draft"], issues=d["issues"],
                            errors=[i for i in d["issues"] if i.level == qa.ERROR],
@@ -256,9 +400,10 @@ def resume_review(draft_id):
 
 @app.post("/resume/review/<draft_id>")
 def resume_save(draft_id):
-    if draft_id not in DRAFTS:
+    s = current()
+    if draft_id not in s.drafts:
         abort(404)
-    draft = DRAFTS[draft_id]["draft"]
+    draft = s.drafts[draft_id]["draft"]
     track = next(iter(draft.get("headlines") or {"general": []}))
 
     # Rebuilt from the form, not from the draft: what the person reviewed and
@@ -288,18 +433,51 @@ def resume_save(draft_id):
             "bullets_expected": role.get("bullets_expected", [3, 5]),
         })
 
-    target = tr._HERE / "master_resume.json"
-    if target.exists():
-        backup = tr._HERE / "master_resume.backup.json"
-        backup.write_text(target.read_text(encoding="utf-8"), encoding="utf-8")
-    target.write_text(json.dumps(edited, indent=2, ensure_ascii=False) + "\n",
-                      encoding="utf-8")
-    DRAFTS.pop(draft_id, None)
+    s.resume = edited
+    s.drafts.pop(draft_id, None)
+
+    # Written to disk only for the one local user whose disk it is. Hosted,
+    # somebody else's resume stays in their session and is never persisted.
+    if sessions.single_user():
+        target = tr._HERE / "master_resume.json"
+        if target.exists():
+            (tr._HERE / "master_resume.backup.json").write_text(
+                target.read_text(encoding="utf-8"), encoding="utf-8")
+        target.write_text(json.dumps(edited, indent=2, ensure_ascii=False) + "\n",
+                          encoding="utf-8")
     return redirect(url_for("resume_page"))
 
 
+# ---------------------------------------------------------------------------
+
+@app.context_processor
+def template_globals():
+    """`hosted` is needed by the layout on every page. Injected once here
+    rather than passed through each render_template, where the one that gets
+    forgotten shows a sign-out button to a local user with nothing to sign out
+    of -- or worse, hides it from someone holding a key."""
+    return {"hosted": not sessions.single_user()}
+
+
+@app.get("/healthz")
+def healthz():
+    return jsonify(ok=True, hosted=not sessions.single_user(),
+                   sessions=sessions.STORE.count())
+
+
+@app.errorhandler(401)
+def unauthorized(_):
+    return redirect(url_for("start_page"))
+
+
+@app.errorhandler(413)
+def too_large(_):
+    return render_template("resume.html", resume=None, bullets=0,
+                           hosted=not sessions.single_user(),
+                           error="That file is over 8MB. A resume should be a "
+                                 "fraction of that — check it's the right file."), 413
+
+
 if __name__ == "__main__":
-    tr.load_env()
     print("\n  resume-agent  →  http://127.0.0.1:5000\n")
-    # threaded so a 90-second run does not block the page polling for it.
     app.run(host="127.0.0.1", port=5000, debug=False, threaded=True)

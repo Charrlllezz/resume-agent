@@ -1,0 +1,41 @@
+# fly launch --no-deploy will rewrite app/region; the rest is deliberate.
+app = "resume-agent"
+primary_region = "sjc"
+
+[build]
+
+[env]
+  RESUME_AGENT_HOSTED = "1"
+  # Chromium is the memory hog here, and each concurrent run holds one. Two at
+  # a time fits comfortably in 1GB; raise this only with the memory to match.
+  MAX_CONCURRENT_RUNS = "2"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  # Sessions live in the machine's memory, so stopping one signs out everybody
+  # on it. Keeping one warm means that only happens when traffic is genuinely
+  # zero, and a cold start is a slow first request rather than a lost session.
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "requests"
+    # A run occupies a thread for 40-90s. Admitting far more than the worker
+    # has threads just queues them inside one machine instead of starting
+    # another.
+    soft_limit = 6
+    hard_limit = 12
+
+[[http_service.checks]]
+  grace_period = "20s"
+  interval = "30s"
+  method = "GET"
+  path = "/healthz"
+  timeout = "5s"
+
+[[vm]]
+  memory = "1gb"
+  cpu_kind = "shared"
+  cpus = 1

@@ -805,8 +805,12 @@ def generate_scroll_pdf(html_path: Path, pdf_path: Path):
 # CLI
 # ---------------------------------------------------------------------------
 
-def make_client():
+def make_client(api_key: str = ""):
     """Anthropic client bounded so one bad role cannot eat an hour.
+
+    api_key is passed explicitly when the caller is holding someone else's --
+    a hosted build takes a key per session and must never fall through to a
+    key sitting in the server's own environment.
 
     A 240s timeout with 2 retries still let a single role run 50 minutes: the
     budget multiplies by attempts and by the number of calls per role, and
@@ -816,7 +820,8 @@ def make_client():
     whole generation open on one socket, which is what made these long enough
     to time out and retry in the first place.
     """
-    return anthropic.Anthropic(timeout=120.0, max_retries=1)
+    extra = {"api_key": api_key} if api_key else {}
+    return anthropic.Anthropic(timeout=120.0, max_retries=1, **extra)
 
 
 @contextmanager

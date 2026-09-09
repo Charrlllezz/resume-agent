@@ -325,6 +325,22 @@ expect(any(i.check == "contact" for i in ingest.check(
        "catches a name that is not in the document")
 
 
+print("\nhosted URL safety (the posting URL comes from a stranger):")
+import sessions as sessions_mod
+
+for _url, _blocked, _why in [
+    ("http://169.254.169.254/latest/meta-data/", True, "cloud metadata"),
+    ("http://127.0.0.1:8080/healthz", True, "this container"),
+    ("http://localhost/admin", True, "this container by name"),
+    ("http://something.internal/", True, "the private network"),
+    ("http://10.0.0.5/", True, "RFC1918"),
+    ("file:///etc/passwd", True, "not http"),
+    ("https://job-boards.greenhouse.io/anthropic/jobs/5290838008", False, "a real posting"),
+]:
+    expect(bool(sessions_mod.safe_url(_url)) == _blocked,
+           f"{'blocks' if _blocked else 'allows'} {_why}: {_url[:46]}")
+
+
 print()
 if failures:
     print(f"{len(failures)} FAILED")
