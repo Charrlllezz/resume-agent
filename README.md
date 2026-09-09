@@ -81,6 +81,36 @@ across a wide pool is where the tailoring happens.
 > this, so anything exaggerated here becomes permanently "verified." Its only
 > value is that it is honest.
 
+## Looking like your resume, not mine
+
+Handing someone back a document in a house style they never chose is a strange
+thing to do. Ingestion reads the uploaded document's visual style and the
+tailored resume comes out set the same way.
+
+Split the way the rest of the project splits things:
+
+- **Deterministic.** The font families come out of the PDF's own resource
+  dictionary, or a DOCX's styles. That is the file saying what it is set in.
+- **Judged.** Plain or designed, the accent colour, whether the name is
+  centred, how tightly it is packed. That is reading a picture, which is what
+  the model is for — constrained by the embedded font list so it cannot name a
+  typeface the document does not contain.
+
+Fonts that are not web fonts map to metric-compatible replacements Google
+hosts — Carlito for Calibri, Arimo for Arial, Tinos for Times New Roman,
+Caladea for Cambria, Gelasio for Georgia. Metric-compatible matters: the
+substitute occupies the same space, so line breaks land where they did.
+
+Every value the model returns is validated before it reaches a stylesheet. A
+colour that is not a hex triple is discarded, not interpolated.
+
+**What it does not do.** It matches typography, colour, chrome, alignment and
+density. It does not reproduce a two-column layout, a sidebar, a photo, or a
+graphic header — a resume built around those comes back single-column. And if
+your original is plainly worse-looking than the built-in template, matching it
+faithfully means getting the worse one back, so the review screen has a
+checkbox to use the house style instead.
+
 ## Tailor one posting
 
 ```bash

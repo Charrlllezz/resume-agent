@@ -192,7 +192,39 @@ def extract_json(response) -> dict:
     raw = "".join(b.text for b in response.content if b.type == "text").strip()
     raw = re.sub(r"^```(?:json)?\s*", "", raw)
     raw = re.sub(r"\s*```$", "", raw)
-    return json.loads(raw)
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        # Asking for "ONLY JSON" gets JSON almost always, and occasionally JSON
+        # followed by a sentence explaining it. Losing a whole paid run to a
+        # trailing pleasantry is a bad trade, so find the object and take it.
+        return json.loads(_first_json_object(raw))
+
+
+def _first_json_object(text: str) -> str:
+    """The first balanced {...}, ignoring braces inside strings."""
+    start = text.find("{")
+    if start < 0:
+        raise ValueError("no JSON object in the response")
+    depth, in_string, escaped = 0, False, False
+    for i, ch in enumerate(text[start:], start):
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start:i + 1]
+    raise ValueError("unterminated JSON object in the response")
 
 
 # Default descriptions for the two tracks this started with. A resume may name
@@ -388,19 +420,8 @@ Rules:
 # ---------------------------------------------------------------------------
 
 RESUME_CSS = """
-  :root {
-    --canvas: #F3F4F0;
-    --canvas-dot: #E1E5DE;
-    --ink: #171D1A;
-    --ink-soft: #4B564F;
-    --surface: #FFFFFF;
-    --line: #D7DCD3;
-    --accent: #1F6E4A;
-    --accent-soft: #E4EEE7;
-    --data: #9A5B1E;
-    --data-soft: #F3E7D8;
-    --radius: 10px;
-  }
+  /* The token values are written by style_block(); everything below is
+     expressed in terms of them so a detected style changes the whole sheet. */
 
   * { box-sizing: border-box; }
 
@@ -410,7 +431,7 @@ RESUME_CSS = """
     background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px);
     background-size: 22px 22px;
     color: var(--ink);
-    font-family: 'IBM Plex Sans', sans-serif;
+    font-family: var(--font-body);
     -webkit-font-smoothing: antialiased;
   }
 
@@ -418,14 +439,14 @@ RESUME_CSS = """
 
   .hero { margin-bottom: 40px; }
   .hero h1 {
-    font-family: 'Space Grotesk', sans-serif;
+    font-family: var(--font-display);
     font-weight: 700;
     font-size: clamp(32px, 6vw, 44px);
     letter-spacing: -0.01em;
     margin: 0 0 6px;
   }
   .hero .tagline {
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: var(--font-mono);
     text-transform: uppercase;
     letter-spacing: 0.09em;
     font-size: 12.5px;
@@ -434,7 +455,7 @@ RESUME_CSS = """
     margin-bottom: 18px;
   }
   .contact-row {
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 13px;
     color: var(--ink-soft);
     display: flex;
@@ -445,7 +466,7 @@ RESUME_CSS = """
   .contact-row .sep { color: var(--line); }
 
   .section-label {
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: var(--font-mono);
     text-transform: uppercase;
     letter-spacing: 0.14em;
     font-size: 11.5px;
@@ -503,7 +524,7 @@ RESUME_CSS = """
     margin-bottom: 8px;
   }
   .card-head h3 {
-    font-family: 'Space Grotesk', sans-serif;
+    font-family: var(--font-display);
     font-size: 16.5px; font-weight: 600; margin: 0;
   }
   .card-head .at { font-weight: 600; color: var(--accent); font-size: 14.5px; }
@@ -511,7 +532,7 @@ RESUME_CSS = """
   .card-head .loc { font-size: 12.5px; color: var(--ink-soft); }
   .card-head .dates {
     margin-left: auto;
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 12px; color: var(--ink-soft); white-space: nowrap;
   }
 
@@ -519,7 +540,7 @@ RESUME_CSS = """
   .bullets li { font-size: 13.8px; line-height: 1.55; color: var(--ink); margin-bottom: 7px; }
   .bullets li:last-child { margin-bottom: 0; }
   .bullets .m {
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: var(--font-mono);
     font-weight: 600;
     color: var(--data);
     background: var(--data-soft);
@@ -531,7 +552,7 @@ RESUME_CSS = """
   .skills { display: flex; flex-direction: column; gap: 14px; }
   .skill-group { display: flex; align-items: flex-start; gap: 14px; flex-wrap: wrap; }
   .skill-label {
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 11.5px;
     text-transform: uppercase;
     letter-spacing: 0.06em;
@@ -540,7 +561,7 @@ RESUME_CSS = """
   }
   .pills { display: flex; flex-wrap: wrap; gap: 7px; flex: 1; }
   .pill {
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 12px;
     background: var(--surface);
     border: 1px solid var(--line);
@@ -627,9 +648,107 @@ def highlight_metrics(text: str) -> str:
     return METRIC_RE.sub(style, escaped)
 
 
+# ---------------------------------------------------------------------------
+# Style: make the tailored resume look like the one that was uploaded
+# ---------------------------------------------------------------------------
+
+# Everything decorative about the house template -- the dotted canvas, the
+# timeline, the cards, the tinted pills -- is switched off here in one place.
+# A resume that arrived as black text on white has to leave as black text on
+# white; handing it back as a designed artifact is not tailoring, it is a
+# redesign nobody asked for.
+PLAIN_CSS = """
+  html, body { background: #FFFFFF; background-image: none; }
+  .page { max-width: 760px; padding: 40px 30px 60px; }
+  .timeline { padding-left: 0; }
+  .timeline::before { display: none; }
+  .port { display: none; }
+  .card { background: transparent; border: 0; border-radius: 0;
+          box-shadow: none; padding: 0 0 2px 0; }
+  .node { margin-bottom: 15px; }
+  .card-head .at { color: var(--ink); }
+  .card-head .at::before { color: var(--line); }
+  .section-label { color: var(--ink); letter-spacing: .10em; }
+  .section-label::after { background: var(--line); }
+  .pill { background: transparent; border: 0; padding: 0 2px 0 0; color: var(--ink); }
+  .pill:not(:last-child)::after { content: ","; color: var(--ink-soft); }
+  .pills { gap: 3px; }
+  .bullets .m { background: transparent; color: inherit; padding: 0;
+                font-family: inherit; font-weight: 600; }
+  .education { background: transparent; border: 0; border-radius: 0;
+               box-shadow: none; padding: 4px 0 0 0; }
+  .skill-group { padding: 2px 0; }
+"""
+
+COMPACT_CSS = """
+  .page { padding: 30px 30px 40px; }
+  .bullets li { font-size: 13px; line-height: 1.42; margin-bottom: 4px; }
+  .node { margin-bottom: 12px; }
+"""
+
+
+def style_for(resume: dict) -> dict:
+    """The detected style, with anything missing filled in from the default."""
+    import style as style_mod
+    spec = dict(style_mod.DEFAULTS)
+    spec.update({k: v for k, v in (resume.get("style") or {}).items() if v})
+    return spec
+
+
+def _tint(hex_colour: str, amount: float) -> str:
+    """Mix a colour towards white. Used for the soft backgrounds the template
+    pairs with each accent, so a detected accent brings its own tint."""
+    try:
+        r, g, b = (int(hex_colour[i:i + 2], 16) for i in (1, 3, 5))
+    except (ValueError, IndexError):
+        return "#EEEEEE"
+    mix = lambda c: int(c + (255 - c) * amount)
+    return "#%02X%02X%02X" % (mix(r), mix(g), mix(b))
+
+
+def style_block(spec: dict) -> str:
+    accent, ink = spec["accent"], spec["ink"]
+    plain = spec.get("chrome") == "plain"
+    css = f"""
+  :root {{
+    --canvas: {"#FFFFFF" if plain else "#F3F4F0"};
+    --canvas-dot: {"#FFFFFF" if plain else "#E1E5DE"};
+    --ink: {ink};
+    --ink-soft: {_tint(ink, 0.42)};
+    --surface: #FFFFFF;
+    --line: {_tint(ink, 0.80)};
+    --accent: {accent};
+    --accent-soft: {_tint(accent, 0.88)};
+    --data: {accent if plain else "#9A5B1E"};
+    --data-soft: {_tint(accent if plain else "#9A5B1E", 0.86)};
+    --radius: {"0px" if plain else "10px"};
+    --font-body: {spec["font_body"]};
+    --font-display: {spec["font_display"]};
+    --font-mono: {spec["font_mono"]};
+  }}
+  .hero {{ text-align: {spec.get("header_align", "left")}; }}
+  .contact-row {{ justify-content: {"center" if spec.get("header_align") == "center" else "flex-start"}; }}
+"""
+    if plain:
+        css += PLAIN_CSS
+    if spec.get("density") == "compact":
+        css += COMPACT_CSS
+    return css
+
+
+def font_link(spec: dict) -> str:
+    families = "&".join(f"family={f}" for f in spec.get("google_fonts") or [])
+    if not families:
+        return ""
+    return ('<link rel="preconnect" href="https://fonts.googleapis.com">\n'
+            f'<link href="https://fonts.googleapis.com/css2?{families}&display=swap" '
+            'rel="stylesheet">')
+
+
 def render_html(tailored: dict, resume: dict) -> str:
     c = resume["contact"]
     edu = resume["education"]
+    spec = style_for(resume)
 
     nodes_html = []
     for i, role in enumerate(tailored["experience"]):
@@ -655,14 +774,20 @@ def render_html(tailored: dict, resume: dict) -> str:
       </article>""")
 
     skills_html = []
+    # A resume that just lists its skills gets one group called "Skills",
+    # which then prints under a section heading also called SKILLS. One of
+    # them has to go.
+    only_group = len(tailored["skills"]) == 1
     for section, skills in tailored["skills"].items():
+        if only_group and section.strip().lower() in ("skills", "skill", ""):
+            section = ""
         pills = "\n".join(
             f'            <span class="pill">{html_lib.escape(s)}</span>'
             for s in skills
         )
         skills_html.append(f"""
       <div class="skill-group">
-        <span class="skill-label">{html_lib.escape(section)}</span>
+        {f'<span class="skill-label">{html_lib.escape(section)}</span>' if section else ''}
         <div class="pills">
 {pills}
         </div>
@@ -674,10 +799,10 @@ def render_html(tailored: dict, resume: dict) -> str:
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{html_lib.escape(c["name"])} · Résumé</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+{font_link(spec)}
 <style>
 {RESUME_CSS}
+{style_block(spec)}
 </style>
 </head>
 <body>

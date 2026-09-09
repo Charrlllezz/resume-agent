@@ -24,6 +24,7 @@ import re
 from pathlib import Path
 
 import qa
+import style as style_mod
 import tailor_resume as tr
 import usage
 
@@ -172,7 +173,13 @@ def check(draft: dict, document: str) -> list:
 
 
 def ingest(client, data: bytes, filename: str, track: str = "general") -> tuple:
-    """(draft resume, source text, provenance issues). Saves nothing."""
+    """(draft resume, source text, provenance issues). Saves nothing.
+
+    The draft carries the document's own visual style, so the tailored resume
+    comes back looking like the one that was uploaded rather than in a house
+    style nobody chose.
+    """
     document = read_document(data, filename)
     draft = extract(client, document, track)
+    draft["style"] = style_mod.detect(client, data, filename, tr.MODEL)
     return draft, document, check(draft, document)

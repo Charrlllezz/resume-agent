@@ -341,6 +341,46 @@ for _url, _blocked, _why in [
            f"{'blocks' if _blocked else 'allows'} {_why}: {_url[:46]}")
 
 
+print("\nstyle detection (the output should look like what was uploaded):")
+import style as style_mod
+
+for _raw, _want, _why in [
+    ("AAAAAA+IBMPlexMono-SemiBold", "monospace", "a subset prefix and weight are not the family"),
+    ("Lora", "serif", "serif-ness is recorded, not guessed from the name"),
+    ("Playfair Display", "serif", "same"),
+    ("Inter", "sans-serif", "sans stays sans"),
+    ("TimesNewRomanPSMT", "serif", "maps to a metric-compatible web font"),
+]:
+    _stack, _ = style_mod.resolve(_raw)
+    expect(_stack.endswith(_want), f"{_why}: {_raw!r} -> {_stack}")
+
+expect(style_mod.resolve("Calibri")[1] == "Carlito:wght@400;700",
+       "Calibri maps to Carlito, which is metric-compatible so line breaks hold")
+
+# Anything the model returns is untrusted input to a stylesheet.
+_dirty = style_mod.merge(style_mod.DEFAULTS,
+                         {"chrome": "sidebar", "accent": "red; } body { display:none",
+                          "header_align": "justify", "density": "airy"})
+expect(_dirty["chrome"] == "designed", "an unknown chrome falls back to the default")
+expect(_dirty["accent"] == style_mod.DEFAULTS["accent"],
+       "a colour that is not a hex triple is refused, not injected into the CSS")
+expect(_dirty["header_align"] == "left", "an unknown alignment falls back")
+expect(_dirty["density"] == "normal", "an unknown density falls back")
+
+_plain = tr.style_block({**style_mod.DEFAULTS, "chrome": "plain"})
+_fancy = tr.style_block(style_mod.DEFAULTS)
+expect(".timeline::before { display: none; }" in _plain, "plain drops the timeline")
+expect("--radius: 0px" in _plain, "plain squares the corners")
+expect(".timeline::before { display: none; }" not in _fancy, "designed keeps it")
+
+# The overlay only wins if it is emitted after the sheet it overrides.
+_html = tr.render_html({"headline": "x", "experience": [], "skills": {}},
+                       {**RESUME, "style": {"chrome": "plain"}})
+expect(_html.index("RESUME_CSS_MARKER" if False else ".timeline { position: relative")
+       < _html.index(".timeline::before { display: none; }"),
+       "the plain overlay is emitted after the base stylesheet")
+
+
 print()
 if failures:
     print(f"{len(failures)} FAILED")

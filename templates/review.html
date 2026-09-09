@@ -64,6 +64,18 @@
     {% endfor %}
   </div>
 
+  <h2 style="margin-top:28px">Look</h2>
+  {% if draft.style %}
+  <p class="hint">Read off your document: {{ draft.style.get('chrome','designed') }},
+     {{ draft.style.get('font_body','').split(',')[0].strip("'") or 'default type' }},
+     accent <code>{{ draft.style.get('accent','—') }}</code>. Your tailored resume
+     will be set the same way.</p>
+  {% endif %}
+  <label class="check">
+    <input type="checkbox" name="house_style" value="1">
+    Use this tool's template instead of my document's styling
+  </label>
+
   <button type="submit">Save as my master resume</button>
   <p class="hint" style="margin-top:10px">Writes <code>master_resume.json</code>.
      An existing one is copied to <code>master_resume.backup.json</code> first.</p>

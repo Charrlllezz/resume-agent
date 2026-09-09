@@ -154,3 +154,7 @@ details.card summary { font-size: .82rem; text-transform: uppercase; letter-spac
 .nav .inline { display: inline; }
 .nav .inline button { margin-top: 0; background: transparent; color: var(--muted);
                       border: 1px solid var(--line); }
+
+label.check { display: flex; align-items: center; gap: 9px; text-transform: none;
+              letter-spacing: 0; font-weight: 400; font-size: .92rem; color: var(--ink); }
+label.check input { width: auto; }

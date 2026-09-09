@@ -416,6 +416,10 @@ def resume_save(draft_id):
                               (request.form.get("headlines") or "").splitlines() if h.strip()]},
         "experience": [],
         "skills": draft.get("skills", {}),
+        # Their document's look, unless they asked for the house template on
+        # the review screen.
+        "style": ({} if request.form.get("house_style") == "1"
+                  else draft.get("style", {})),
         "education": {k: (request.form.get(f"education.{k}") or "").strip()
                       for k in ("degree", "school", "year")},
     }
