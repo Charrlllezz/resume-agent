@@ -1,0 +1,27 @@
+# Your resume and your job search. Everything here is personal: the resume
+# itself, which companies you applied to, and a model's private read on each
+# one. Committing any of it means a recruiter at a company you marked "skip"
+# can read that you did.
+master_resume.json
+resumes/
+tailored_*
+applications.csv
+tracker.csv
+
+# Job lists and pipeline output
+saved_jobs.tsv
+resolved.tsv
+resolved_unresolved.json
+ranked.tsv
+roles.tsv
+*_candidates.tsv
+*.log
+
+# Caches
+rank_cache.json
+compare_cache.json
+compare_results.json
+
+__pycache__/
+.venv/
+.env

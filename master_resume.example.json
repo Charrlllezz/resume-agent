@@ -1,0 +1,241 @@
+{
+  "contact": {
+    "name": "Jordan Reyes",
+    "phone": "(555) 010-4477",
+    "email": "jordan.reyes@example.com",
+    "linkedin": "linkedin.com/in/jordan-reyes-example"
+  },
+  "headlines": {
+    "gtm": [
+      "GTM Engineering, Solutions & Revenue Operations",
+      "Technical GTM, Automation & Customer Onboarding",
+      "Solutions Engineering & Go-to-Market Systems"
+    ],
+    "cs": [
+      "Enterprise Customer Success & Technical Implementation",
+      "Customer Onboarding, Adoption & Retention"
+    ],
+    "technical": [
+      "AI Agents, Workflow Automation & Technical Implementation",
+      "AI Agents, Technical Implementation & Enterprise Onboarding"
+    ]
+  },
+  "experience": [
+    {
+      "company": "Northwind AI",
+      "location": "Remote",
+      "dates": "Apr 2026 – Aug 2026",
+      "titles": {
+        "gtm": "Solutions Architect, New Verticals",
+        "cs": "Implementation Engineer, GTM Operations"
+      },
+      "bullets": {
+        "gtm": [
+          "Built the onboarding workflow (workspace setup, data connections, template generation, campaign launch) that account teams now run on all 25+ enterprise accounts, trimming time-to-first-value by roughly 40% and replacing tribal knowledge with a system new team members can pick up on day one",
+          "Served as the technical backbone for Northwind AI's Signals offering, managing a live portfolio of 25+ high-growth customer accounts and curating what each account's workspace pulls into context to produce reliable outputs",
+          "Used Claude Code and Cursor daily, connected via MCP, to build Python automations for data enrichment, contact sourcing, and outbound email generation, wired directly into the sending platform",
+          "Built a TAM/SAM/SOM prioritization framework in SQL for Account Management, giving the team a repeatable way to score and segment where to focus and shrinking per-account planning from days to under an hour",
+          "Caught and fixed platform configuration issues before they reached the account team, including scaling suppression logic past 1,000 domains and correcting plan-tier mismatches, sparing reps an estimated 10+ hours of troubleshooting a month",
+          "Synced daily with Account Managers in a pod-style model, surfacing account risk signals early and cutting escalation response time from days to hours across 20+ premium accounts"
+        ],
+        "cs": [
+          "Protected retention across a 25+ account enterprise portfolio by proactively resolving platform and configuration risk before issues threatened renewal",
+          "Managed onboarding and ongoing adoption for 25+ enterprise accounts spanning healthcare, insurance, logistics, and B2B SaaS, from kickoff through steady-state usage",
+          "Partnered daily with Account Management in a pod-style model, aligning strategy and cadence to each customer's approved focus areas to support accurate reporting and fast escalation resolution",
+          "Cut time-to-first-value by roughly 40% for 25+ enterprise customers by replacing an undocumented onboarding process with a workflow any team member can run",
+          "Built a prioritization framework now used to guide account strategy conversations with customers on where to focus investment"
+        ]
+      },
+      "bullets_expected": [
+        4,
+        5
+      ]
+    },
+    {
+      "company": "Contoso Data",
+      "location": "San Francisco, CA",
+      "dates": "Apr 2025 – Mar 2026",
+      "titles": {
+        "gtm": "GTM Engineer",
+        "cs": "Customer Success Manager, Enterprise"
+      },
+      "bullets": {
+        "gtm": [
+          "Generated $1.2M in qualified pipeline by building a signal-based outbound engine in Clay and n8n that scored accounts on product usage and hiring signals rather than firmographics alone",
+          "Carried and hit a $600K annual quota while owning the technical side of every deal, running discovery and demos for C-level buyers at 40+ enterprise prospects",
+          "Rebuilt the lead routing and enrichment layer across HubSpot and Salesforce, cutting speed-to-lead from 19 hours to under 30 minutes",
+          "Owned revenue operations reporting end to end, replacing a manual weekly spreadsheet with a live dashboard the leadership team runs forecast calls on",
+          "Reduced churn risk on 30+ accounts by instrumenting product usage alerts that flagged declining adoption two months before renewal",
+          "Partnered with Product on the enterprise integration roadmap, translating recurring customer objections into three shipped features"
+        ],
+        "cs": [
+          "Owned the full customer lifecycle end to end for 30+ enterprise accounts, from onboarding and technical implementation through renewal and expansion",
+          "Grew net revenue retention on the enterprise book by identifying expansion paths during quarterly business reviews rather than at renewal",
+          "Ran technical implementations for customers integrating Contoso Data with Salesforce and HubSpot, serving as the escalation point for configuration issues",
+          "Built trusted relationships with CMOs and RevOps leaders across enterprise accounts, becoming the first call when a workflow broke",
+          "Cut support escalations by instrumenting usage alerts that surfaced declining adoption two months before it reached the renewal conversation"
+        ]
+      },
+      "bullets_expected": [
+        4,
+        5
+      ]
+    },
+    {
+      "company": "Fabrikam Logistics",
+      "location": "San Francisco, CA",
+      "dates": "Jun 2024 – Apr 2025",
+      "titles": {
+        "gtm": "Growth Engineer",
+        "cs": "Implementation Consultant"
+      },
+      "bullets": {
+        "gtm": [
+          "Turned signal-based outbound into a repeatable engine using Clay, n8n, and Zapier, sourcing 400+ qualified accounts a month without adding headcount",
+          "Generated $800K in new pipeline across two quarters by rebuilding the outbound motion around intent data instead of static lists",
+          "Automated the quote-to-cash handoff between sales and finance, removing a two-day manual step from every closed deal",
+          "Ran technical evaluations alongside Account Executives for prospects integrating Fabrikam with their warehouse systems",
+          "Documented the entire outbound stack so a two-person team could operate what had been one person's undocumented workflow"
+        ],
+        "cs": [
+          "Implemented Fabrikam Logistics for 20+ mid-market customers, owning the technical build from kickoff through go-live",
+          "Cut average implementation time from six weeks to under three by templating the integration steps every customer repeated",
+          "Served as the technical escalation point for customer integration failures, resolving root causes rather than routing tickets",
+          "Trained customer operations teams on the platform, reducing inbound support volume from newly launched accounts"
+        ]
+      },
+      "bullets_expected": [
+        3,
+        4
+      ]
+    },
+    {
+      "company": "Litware Systems",
+      "location": "San Francisco, CA",
+      "dates": "Sep 2023 – Jun 2024",
+      "titles": {
+        "gtm": "Solutions Consultant",
+        "cs": "Customer Success Manager"
+      },
+      "bullets": {
+        "gtm": [
+          "Generated $450K in qualified pipeline through technical discovery calls that surfaced integration requirements competitors were missing",
+          "Built the demo environment and technical collateral the sales team used on every enterprise opportunity",
+          "Partnered with Engineering to scope custom integrations for regulated customers, closing three deals that had stalled on compliance questions",
+          "Ran onboarding for new customers through their first successful workflow, keeping first-90-day activation above target"
+        ],
+        "cs": [
+          "Managed a book of 45 accounts through onboarding, adoption, and renewal, holding logo retention above 90%",
+          "Ran quarterly business reviews with customer stakeholders, tying platform usage to the outcomes each account was measured on",
+          "Resolved technical escalations directly rather than routing them, cutting average resolution time in half"
+        ]
+      },
+      "bullets_expected": [
+        3,
+        4
+      ]
+    },
+    {
+      "company": "Proseware",
+      "location": "San Jose, CA",
+      "dates": "Aug 2021 – Jul 2023",
+      "titles": {
+        "gtm": "Strategic Growth Representative",
+        "cs": "Account Manager"
+      },
+      "bullets": {
+        "gtm": [
+          "Ranked #1 on a team of 12 for pipeline generated in H1 2023, sourcing $2.1M in qualified opportunities",
+          "Closed $204K at 123% of quota in the first full year carrying a number",
+          "Established rapport as first point of contact for prospective customers, ensuring a seamless handoff into the sales cycle",
+          "Built the team's first prospecting sequence library, which became the onboarding material for every rep hired after"
+        ],
+        "cs": [
+          "Managed renewals and expansion across a 60-account book, growing account value year over year",
+          "Ran onboarding calls for every new account, setting expectations that reduced early churn",
+          "Coordinated between support, product, and finance to resolve customer issues that crossed team boundaries",
+          "Maintained relationships with day-to-day users and economic buyers alike across a 60-account portfolio"
+        ]
+      },
+      "bullets_expected": [
+        2,
+        3
+      ]
+    }
+  ],
+  "skills": {
+    "gtm": {
+      "GTM Tech Stack": [
+        "Salesforce",
+        "HubSpot",
+        "Outreach",
+        "Apollo",
+        "ZoomInfo",
+        "LinkedIn Sales Navigator",
+        "Gong"
+      ],
+      "AI Tooling": [
+        "Claude Code",
+        "Anthropic API / Claude SDK",
+        "Cursor",
+        "MCP",
+        "OpenAI API",
+        "Prompt engineering",
+        "Retrieval-augmented generation",
+        "Evaluation harnesses",
+        "Agentic workflows"
+      ],
+      "Automation & Data": [
+        "Clay",
+        "n8n",
+        "Zapier",
+        "SQL",
+        "Airtable",
+        "Google Sheets / Apps Script"
+      ],
+      "Engineering & Deployment": [
+        "Python",
+        "JavaScript",
+        "REST APIs",
+        "Webhooks",
+        "Git",
+        "Playwright",
+        "Cloudflare Workers"
+      ]
+    },
+    "cs": {
+      "Platforms": [
+        "Salesforce",
+        "HubSpot",
+        "Zendesk",
+        "Intercom",
+        "Notion"
+      ],
+      "Automation & GTM": [
+        "Clay",
+        "n8n",
+        "Zapier",
+        "SQL",
+        "Python",
+        "REST APIs",
+        "Webhooks",
+        "Airtable",
+        "Looker",
+        "Google Sheets / Apps Script"
+      ],
+      "Customer Success": [
+        "Onboarding & implementation",
+        "Quarterly business reviews",
+        "Renewals & expansion",
+        "Escalation management",
+        "Adoption reporting",
+        "Executive stakeholder management"
+      ]
+    }
+  },
+  "education": {
+    "degree": "Bachelor of Arts, Communication",
+    "school": "State University",
+    "year": "2021"
+  }
+}
