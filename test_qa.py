@@ -382,6 +382,14 @@ expect("mono" in style_mod.from_fonts(["ibmplexsans", "ibmplexmono"])["font_mono
 # browser instead; run it after touching RESUME_CSS, PLAIN_CSS or style.py.
 
 
+expect(style_mod._is_grey("#2B2B2B") and style_mod._is_grey("#FFFFFF"),
+       "greys are recognised as having no hue")
+expect(not style_mod._is_grey("#0B3C5D") and not style_mod._is_grey("#B85C1E"),
+       "real colours are not mistaken for grey")
+expect(style_mod._luma("#000000") < style_mod._luma("#2B2B2B") < style_mod._luma("#FFFFFF"),
+       "luminance orders dark to light")
+
+
 print()
 if failures:
     print(f"{len(failures)} FAILED")

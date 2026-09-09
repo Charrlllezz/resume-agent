@@ -161,6 +161,51 @@ def main():
         expect(heading == "rgb(0, 0, 0)",
                f"a black-and-white resume stays black and white (got {heading})")
 
+
+        print("\nevery declared font is actually requested:")
+        for spec_name, spec_val in [("plain serif", PLAIN_SERIF)]:
+            html, resume = sample(spec_val)
+            declared = {tr.style_for(resume)[k] for k in
+                        ("font_body", "font_display", "font_heading", "font_mono")}
+            requested = " ".join(tr.style_for(resume)["google_fonts"]).replace("+", " ").lower()
+            missing = [d for d in declared
+                       if d.split(",")[0].strip("'\" ").lower() not in requested
+                       and d.split(",")[0].strip("'\" ").lower()
+                       not in ("serif", "sans-serif", "monospace", "ui-monospace")]
+            expect(not missing,
+                   f"{spec_name}: no font is declared without being loaded ({missing})")
+
+
+        print("\ncolour comes out of the file, not out of a guess:")
+        import style as style_mod
+        swatch = """<!doctype html><meta charset=utf-8>
+          <style>body{font-family:Arial;color:#2B2B2B;margin:0;padding:30px}
+          h1{color:#0B3C5D}.a{color:#B85C1E}.b{color:#1F7A4C}</style>
+          <h1>Heading in navy that carries some length to it</h1>
+          <p>Body copy in near-black, deliberately the longest run of text here
+             so that it wins on weight and is read as the ink colour.</p>
+          <p class=a>A rust coloured line of text</p>
+          <p class=b>A green coloured line of text</p>"""
+        page = browser.new_page()
+        page.set_content(swatch, wait_until="networkidle")
+        page.pdf(path="/tmp/_swatch.pdf", format="Letter", print_background=True)
+        found = style_mod.colours_for(Path("/tmp/_swatch.pdf").read_bytes())
+        expect(found.get("ink") == "#2B2B2B",
+               f"the ink colour is exact, not approximated (got {found.get('ink')})")
+        expect({found.get("accent"), found.get("accent_2")} <= {"#0B3C5D", "#B85C1E", "#1F7A4C"},
+               f"both accents are real colours from the file (got {found})")
+        expect("#FFFFFF" not in found.values(), "the page colour is not mistaken for an accent")
+
+        mono_page = """<!doctype html><meta charset=utf-8>
+          <style>body{font-family:Arial;color:#000;margin:0;padding:30px}</style>
+          <h1>Entirely black and white</h1><p>No colour anywhere on this page at all.</p>"""
+        page = browser.new_page()
+        page.set_content(mono_page, wait_until="networkidle")
+        page.pdf(path="/tmp/_mono.pdf", format="Letter", print_background=True)
+        found = style_mod.colours_for(Path("/tmp/_mono.pdf").read_bytes())
+        expect(found.get("accent") == "#000000",
+               f"a black and white resume gets no invented accent (got {found.get('accent')})")
+
         browser.close()
 
     print()

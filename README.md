@@ -89,12 +89,23 @@ tailored resume comes out set the same way.
 
 Split the way the rest of the project splits things:
 
-- **Deterministic.** The font families come out of the PDF's own resource
-  dictionary, or a DOCX's styles. That is the file saying what it is set in.
-- **Judged.** Plain or designed, the accent colour, whether the name is
-  centred, how tightly it is packed. That is reading a picture, which is what
-  the model is for — constrained by the embedded font list so it cannot name a
-  typeface the document does not contain.
+- **Deterministic.** Font families come out of the PDF's own resource
+  dictionary, or a DOCX's styles. Colours come out of the content stream — the
+  fill colours text is actually painted in, weighted by how much text uses
+  each. Both are the file stating what it is, not an opinion about it.
+- **Judged.** Plain or designed, which font is the name and which is the body,
+  whether the name is centred, how tightly it is packed. That is reading a
+  picture, which is what the model is for — constrained by the embedded font
+  list so it cannot name a typeface the document does not contain.
+
+Colour used to be judged too, and it was close enough to look right and wrong
+enough to matter: asked to read a resume set in `#0B3C5D`, `#B85C1E` and
+`#2B2B2B`, it returned `#1b3a5c`, `#c05a26` and `#1f1f1f`. Parsing the file
+returns the three exact values. Where a document has no hue at all, no accent
+is invented for it.
+
+Four type roles are carried — the name, section headings, body, and anything
+monospaced — plus body colour and two accents.
 
 Fonts that are not web fonts map to metric-compatible replacements Google
 hosts — Carlito for Calibri, Arimo for Arial, Tinos for Times New Roman,
@@ -123,9 +134,12 @@ catches stray type anywhere instead of only where someone thought to look.
 Each of the three bugs was reintroduced deliberately to confirm the suite fails
 on it. A regression test that has never failed is a guess.
 
-**What it does not do.** It matches typography, colour, chrome, alignment and
-density. It does not reproduce a two-column layout, a sidebar, a photo, or a
-graphic header — a resume built around those comes back single-column. And if
+**What it does not do.** It does not reproduce a two-column layout, a sidebar,
+a photo, or a graphic header — a resume built around those comes back
+single-column. A fifth distinct typeface collapses into the four roles. And
+which font plays which role is model judgment, so a resume that sets its name
+and its headings in two different display faces can have one of them read as
+the other; the colours will still be exact. And if
 your original is plainly worse-looking than the built-in template, matching it
 faithfully means getting the worse one back, so the review screen has a
 checkbox to use the house style instead.

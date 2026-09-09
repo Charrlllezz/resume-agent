@@ -466,7 +466,7 @@ RESUME_CSS = """
   .contact-row .sep { color: var(--line); }
 
   .section-label {
-    font-family: var(--font-mono);
+    font-family: var(--font-heading);
     text-transform: uppercase;
     letter-spacing: 0.14em;
     font-size: 11.5px;
@@ -524,7 +524,7 @@ RESUME_CSS = """
     margin-bottom: 8px;
   }
   .card-head h3 {
-    font-family: var(--font-display);
+    font-family: var(--font-heading);
     font-size: 16.5px; font-weight: 600; margin: 0;
   }
   .card-head .at { font-weight: 600; color: var(--accent); font-size: 14.5px; }
@@ -674,7 +674,7 @@ PLAIN_CSS = """
      black, which is not "matching" it. Where the accent is #000000 this
      renders black anyway, which is the right answer for that resume. */
   .section-label { color: var(--accent); letter-spacing: .10em; }
-  .section-label::after { background: var(--line); }
+  .section-label::after { background: var(--accent-2); }
   .pill { background: transparent; border: 0; padding: 0 2px 0 0; color: var(--ink); }
   .pill:not(:last-child)::after { content: ","; color: var(--ink-soft); }
   .pills { gap: 3px; }
@@ -693,10 +693,27 @@ COMPACT_CSS = """
 
 
 def style_for(resume: dict) -> dict:
-    """The detected style, with anything missing filled in from the default."""
+    """The detected style, with anything missing filled in.
+
+    A missing font slot inherits from a slot that WAS supplied, not from the
+    house default. Falling back to the default let this project's own IBM Plex
+    Mono into a Times New Roman resume's section headings -- type the document
+    never had, which is the failure this whole feature exists to avoid. It also
+    matters for a style stored before a slot existed.
+    """
     import style as style_mod
+    given = {k: v for k, v in (resume.get("style") or {}).items() if v}
     spec = dict(style_mod.DEFAULTS)
-    spec.update({k: v for k, v in (resume.get("style") or {}).items() if v})
+    spec.update(given)
+    if given:
+        if "font_display" not in given:
+            spec["font_display"] = given.get("font_body", spec["font_display"])
+        if "font_heading" not in given:
+            spec["font_heading"] = spec["font_display"]
+        if "font_mono" not in given:
+            spec["font_mono"] = given.get("font_body", spec["font_mono"])
+        if "accent_2" not in given:
+            spec["accent_2"] = given.get("accent", spec["accent_2"])
     return spec
 
 
@@ -729,7 +746,9 @@ def style_block(spec: dict) -> str:
     --radius: {"0px" if plain else "10px"};
     --font-body: {spec["font_body"]};
     --font-display: {spec["font_display"]};
+    --font-heading: {spec["font_heading"]};
     --font-mono: {spec["font_mono"]};
+    --accent-2: {spec["accent_2"]};
   }}
   .hero {{ text-align: {spec.get("header_align", "left")}; }}
   .contact-row {{ justify-content: {"center" if spec.get("header_align") == "center" else "flex-start"}; }}

@@ -23,12 +23,14 @@ import re
 DEFAULTS = {
     "chrome": "designed",       # designed | plain
     "font_display": "'Space Grotesk', sans-serif",
+    "font_heading": "'IBM Plex Mono', monospace",
     "font_body": "'IBM Plex Sans', sans-serif",
     "font_mono": "'IBM Plex Mono', monospace",
     "google_fonts": ["Space+Grotesk:wght@700",
                      "IBM+Plex+Sans:wght@400;500;600",
                      "IBM+Plex+Mono:wght@400;500;600"],
     "accent": "#1F6E4A",
+    "accent_2": "#D7DCD3",
     "ink": "#171D1A",
     "header_align": "left",     # left | center
     "density": "normal",        # normal | compact
@@ -84,6 +86,11 @@ SELF_HOSTED = {
     "playfair": ("Playfair Display", "Playfair+Display:wght@400;700", "serif"),
     "karla": ("Karla", "Karla:wght@400;600;700", "sans-serif"),
     "worksans": ("Work Sans", "Work+Sans:wght@400;500;600", "sans-serif"),
+    "robotomono": ("Roboto Mono", "Roboto+Mono:wght@400;500", "monospace"),
+    "robotoslab": ("Roboto Slab", "Roboto+Slab:wght@400;700", "serif"),
+    "sourcecodepro": ("Source Code Pro", "Source+Code+Pro:wght@400;500", "monospace"),
+    "ibmplexsanscondensed": ("IBM Plex Sans Condensed",
+                             "IBM+Plex+Sans+Condensed:wght@400;600", "sans-serif"),
     "ebgaramond": ("EB Garamond", "EB+Garamond:wght@400;600", "serif"),
     "lora": ("Lora", "Lora:wght@400;600;700", "serif"),
     "firasans": ("Fira Sans", "Fira+Sans:wght@400;500;700", "sans-serif"),
@@ -111,10 +118,15 @@ def resolve(raw: str) -> tuple:
     key = clean_font_name(raw)
     if not key:
         return "", None
-    for prefix, (family, spec, generic) in SELF_HOSTED.items():
+    # Longest key first. "roboto" is a prefix of "robotomono", so matching in
+    # table order resolved Roboto Mono to Roboto -- a proportional font where
+    # the document had a monospace, which pulls every aligned date out of line.
+    for prefix in sorted(SELF_HOSTED, key=len, reverse=True):
+        family, spec, generic = SELF_HOSTED[prefix]
         if key.startswith(prefix) or prefix in key:
             return f"'{family}', {generic}", spec
-    for prefix, (_family, stack, spec) in FONT_MAP.items():
+    for prefix in sorted(FONT_MAP, key=len, reverse=True):
+        _family, stack, spec = FONT_MAP[prefix]
         clean = re.sub(r"[^a-z0-9]", "", prefix)
         if key.startswith(clean) or clean in key:
             return stack, spec
@@ -185,20 +197,24 @@ def from_fonts(names: list) -> dict:
         return spec
     body = stacks[0]
     display = next((s for s in stacks if s != body), body)
+    # A resume that sets its name, its headings and its body in three different
+    # faces is common in template-built resumes. Collapsing headings into the
+    # display face loses one of them outright.
+    heading = next((s for s in stacks if s not in (body, display)), display)
     # A plain Word resume is set in exactly one font. Falling back to a generic
     # monospace for dates and taglines puts type on the page that the original
     # never had, which is the opposite of matching it. Only use a monospace if
     # the document actually contains one.
     mono = next((s for s in stacks if "mono" in s.lower()), body)
-    spec.update(font_body=body, font_display=display, font_mono=mono,
-                google_fonts=google)
+    spec.update(font_body=body, font_display=display, font_heading=heading,
+                font_mono=mono, google_fonts=google)
     return spec
 
 
 def merge(base: dict, judged: dict) -> dict:
     """Model judgment on top of the deterministic base, keys we allow only."""
     out = dict(base)
-    for key in ("chrome", "accent", "ink", "header_align", "density"):
+    for key in ("chrome", "accent", "accent_2", "ink", "header_align", "density"):
         value = (judged or {}).get(key)
         if isinstance(value, str) and value.strip():
             out[key] = value.strip()
@@ -208,10 +224,80 @@ def merge(base: dict, judged: dict) -> dict:
         out["header_align"] = "left"
     if out["density"] not in ("normal", "compact"):
         out["density"] = "normal"
-    for key in ("accent", "ink"):
+    for key in ("accent", "accent_2", "ink"):
         if not re.fullmatch(r"#[0-9a-fA-F]{6}", out.get(key, "")):
             out[key] = DEFAULTS[key]
     return out
+
+
+def colours_from_pdf(data: bytes) -> list:
+    """[(hex, weight)] for every fill colour text is actually painted in.
+
+    Deterministic, and strictly better than looking at the page. Asked to read
+    the colours off a resume, the model returned #1b3a5c, #c05a26 and #1f1f1f
+    for a document whose real values were #0B3C5D, #B85C1E and #2B2B2B -- close
+    enough to look right and wrong enough to be someone else's brand colour.
+    These come out of the content stream, so they are the file's own numbers.
+    """
+    import collections
+    import io
+
+    from pypdf import PdfReader
+    from pypdf.generic import ContentStream
+
+    weights = collections.Counter()
+    reader = PdfReader(io.BytesIO(data))
+    for page in reader.pages[:3]:
+        try:
+            stream = ContentStream(page.get_contents(), reader)
+        except Exception:
+            continue
+        current = None
+        for operands, op in stream.operations:
+            name = op.decode() if isinstance(op, bytes) else str(op)
+            try:
+                if name == "rg" and len(operands) == 3:
+                    current = tuple(round(float(x) * 255) for x in operands)
+                elif name == "g" and len(operands) == 1:
+                    grey = round(float(operands[0]) * 255)
+                    current = (grey, grey, grey)
+                elif name == "k" and len(operands) == 4:
+                    c, m, y, k = (float(x) for x in operands)
+                    current = tuple(round(255 * (1 - min(1, ch + k)))
+                                    for ch in (c, m, y))
+                elif name in ("Tj", "TJ") and current is not None:
+                    weights[current] += len(str(operands[0]))
+            except (ValueError, TypeError, IndexError):
+                continue
+    return [("#%02X%02X%02X" % rgb, n) for rgb, n in weights.most_common()]
+
+
+def _is_grey(hex_colour: str, tolerance: int = 18) -> bool:
+    r, g, b = (int(hex_colour[i:i + 2], 16) for i in (1, 3, 5))
+    return max(r, g, b) - min(r, g, b) <= tolerance
+
+
+def _luma(hex_colour: str) -> float:
+    r, g, b = (int(hex_colour[i:i + 2], 16) for i in (1, 3, 5))
+    return (0.299 * r + 0.587 * g + 0.114 * b) / 255
+
+
+def colours_for(data: bytes) -> dict:
+    """ink and up to two accents, taken from the document's own numbers.
+
+    Ink is the darkest colour carrying real weight -- the body text. Accents
+    are the colours with actual hue, in order of how much text uses them. A
+    resume with no hue at all gets black, rather than an accent invented for it.
+    """
+    found = colours_from_pdf(data)
+    if not found:
+        return {}
+    dark = [(c, n) for c, n in found if _luma(c) < 0.55]
+    ink = max(dark, key=lambda cn: cn[1])[0] if dark else found[0][0]
+    chromatic = [c for c, _ in found if not _is_grey(c) and _luma(c) < 0.85]
+    accent = chromatic[0] if chromatic else "#000000"
+    accent_2 = chromatic[1] if len(chromatic) > 1 else accent
+    return {"ink": ink, "accent": accent, "accent_2": accent_2}
 
 
 DESCRIBE = """Describe only the VISUAL STYLE of this resume. Ignore what it says.
@@ -225,19 +311,21 @@ Return ONLY this JSON:
 {{
   "chrome": "plain" | "designed",
   "accent": "#rrggbb",
+  "accent_2": "#rrggbb",
   "ink": "#rrggbb",
   "header_align": "left" | "center",
   "density": "normal" | "compact",
   "body_font": "family name",
-  "display_font": "family name for the name and section headings"
+  "display_font": "family name the person's NAME is set in",
+  "heading_font": "family name SECTION HEADINGS and job titles are set in"
 }}
 
 - "plain": black text on white, no colour blocks, no cards, no rules beyond a
   thin line under section headings. Most Word and Google Docs resumes.
 - "designed": colour used deliberately, tinted backgrounds, boxes, sidebars,
   or a visual device like a timeline.
-- "accent": the one colour used for emphasis. If the resume is entirely black
-  and grey, return "#000000" -- do not invent an accent it does not have.
+- Colour is read out of the file separately and is not your job. The values
+  you return for it are only a fallback for when that fails.
 - "ink": the body text colour, usually near-black.
 - "density": "compact" if it is packed to fit a page, "normal" otherwise."""
 
@@ -289,18 +377,34 @@ def detect(client, data: bytes, filename: str, model: str) -> dict:
     # Font roles come from the judgment, resolved against the real families
     # the file embeds. The model is good at "which of these is the body text"
     # and bad at naming a font it was not given.
-    ordered = [judged.get(k) for k in ("body_font", "display_font") if judged.get(k)]
+    ordered = [judged.get(k) for k in ("body_font", "display_font", "heading_font")
+               if judged.get(k)]
     spec = from_fonts(ordered or names)
     if judged.get("body_font"):
         body, gf_body = resolve(judged["body_font"])
         display, gf_display = resolve(judged.get("display_font") or judged["body_font"])
+        heading, gf_heading = resolve(judged.get("heading_font") or judged.get("display_font")
+                                      or judged["body_font"])
         body = body or spec["font_body"]
         # Anything monospaced in the document, whether or not the model
         # mentioned it. A resume set in one font must stay set in one font.
-        mono = next((resolve(n)[0] for n in names if "mono" in clean_font_name(n)), body)
+        # The monospace needs requesting too. Declaring 'Roboto Mono' in the
+        # stylesheet without asking Google for it just falls back to whatever
+        # monospace the renderer has, which is a different font at a different
+        # width -- the dates stop lining up and the page height changes.
+        mono_name = next((n for n in names if "mono" in clean_font_name(n)), "")
+        mono, gf_mono = resolve(mono_name) if mono_name else (body, None)
         spec.update(font_body=body,
                     font_display=display or spec["font_display"],
-                    font_mono=mono,
+                    font_heading=heading or display or spec["font_heading"],
+                    font_mono=mono or body,
                     google_fonts=list(dict.fromkeys(
-                        g for g in (gf_body, gf_display) if g)) or spec["google_fonts"])
-    return merge(spec, judged)
+                        g for g in (gf_body, gf_display, gf_heading, gf_mono) if g))
+                    or spec["google_fonts"])
+    # Colour comes from the file, not from looking at it. Model judgment is
+    # kept only as the fallback for a document the parser cannot read.
+    try:
+        exact = colours_for(data) if filename.lower().endswith(".pdf") else {}
+    except Exception:
+        exact = {}
+    return merge(spec, {**judged, **exact})
