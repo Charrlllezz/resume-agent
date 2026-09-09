@@ -96,7 +96,7 @@ class Result:
             "Fit": self.verdict,
             "Score": f"{self.score:.0%}" if self.assessment else "",
             "Status": "Ready to send",
-            "Posting": self.posting_url,
+            "Posting": self.posting_url or "pasted text",
         }
 
 

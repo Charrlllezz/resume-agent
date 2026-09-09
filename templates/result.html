@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}{{ job.company or 'Result' }} · resume-agent{% endblock %}
+{% block topright %}<a class="btn" href="{{ url_for('index') }}">New posting</a>{% endblock %}
+{% block body %}
+
+<section class="result-head">
+  <div>
+    <h1>{{ job.company or 'Untitled company' }}</h1>
+    <p class="role">{{ r.role_title or '—' }}</p>
+  </div>
+  <div class="verdicts">
+    {% if r.assessment %}
+      <span class="badge fit-{{ r.verdict|lower }}">{{ r.verdict }} · {{ '%.0f'|format(r.score * 100) }}%</span>
+    {% endif %}
+    {% if r.has_errors %}
+      <span class="badge bad">QA failed</span>
+    {% else %}
+      <span class="badge good">QA passed</span>
+    {% endif %}
+  </div>
+</section>
+
+{% if r.has_errors %}
+<p class="banner bad"><strong>Don't send this.</strong> QA found claims in the
+   output that don't trace back to your master resume. They're listed below.</p>
+{% endif %}
+
+<section class="actions">
+  <a class="btn primary" href="{{ url_for('job_pdf', job_id=job.id) }}">Download PDF</a>
+  <a class="btn" href="{{ url_for('job_html', job_id=job.id) }}" target="_blank">Open HTML</a>
+  {% if r.posting_url %}<a class="btn ghost" href="{{ r.posting_url }}" target="_blank" rel="noopener">The posting</a>{% endif %}
+</section>
+
+<section class="grid">
+
+  <article class="card">
+    <h2>Tracker row</h2>
+    <p class="hint">What a spreadsheet holds. Everything else on this page is
+       what it can't.</p>
+    <dl class="row">
+      {% for k, v in row.items() %}
+      <div><dt>{{ k }}</dt><dd>{{ v or '—' }}</dd></div>
+      {% endfor %}
+      <div><dt>Cost</dt><dd>${{ '%.3f'|format(r.cost) }} · {{ r.usage.calls }} calls</dd></div>
+    </dl>
+  </article>
+
+  <article class="card">
+    <h2>Role</h2>
+    <dl class="row">
+      <div><dt>Track</dt><dd>{{ r.analysis.get('track','—')|upper }}</dd></div>
+      <div><dt>Tone</dt><dd>{{ r.analysis.get('tone','—') }}</dd></div>
+      <div><dt>Stage</dt><dd>{{ r.analysis.get('company_stage','—')|capitalize }}</dd></div>
+      <div><dt>Flavor</dt><dd>{{ r.analysis.get('role_flavor','—') }}</dd></div>
+    </dl>
+    <h3>Themes</h3>
+    <ul class="chips">{% for t in r.analysis.get('key_themes', []) %}<li>{{ t }}</li>{% endfor %}</ul>
+  </article>
+
+</section>
+
+{% if assessments %}
+<section class="card">
+  <h2>Fit, requirement by requirement</h2>
+  <p class="hint">The model has to quote your resume for anything it calls met.
+     That's what makes the verdict auditable rather than a vibe.</p>
+  <ul class="reqs">
+    {% for a in assessments %}
+    <li class="req {{ a.get('status','') }}">
+      <span class="tag">{{ a.get('status','?') }}</span>
+      <div>
+        <p class="what">{{ a.get('requirement','') }}</p>
+        {% if a.get('evidence') %}<p class="ev">{{ a.evidence }}</p>{% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+<section class="grid">
+  <article class="card">
+    <h2>QA</h2>
+    <p class="hint">Every bullet, metric, skill, title and date traced back to
+       <code>{{ 'master_resume.json' }}</code>. Deterministic — no model judges
+       its own output here.</p>
+    {% if not r.issues %}<p class="none">Nothing flagged.</p>{% endif %}
+    {% for level, items in grouped.items() if items %}
+    <h3 class="lvl {{ level|lower }}">{{ level }} <span>{{ items|length }}</span></h3>
+    <ul class="findings">
+      {% for i in items %}
+      <li><code>{{ i.check }}</code> {{ i.message }}</li>
+      {% endfor %}
+    </ul>
+    {% endfor %}
+  </article>
+
+  <article class="card">
+    <h2>ATS keywords</h2>
+    {% set missing = r.missing_keywords() %}
+    {% set total = r.analysis.get('ats_keywords', [])|length %}
+    <p class="big">{{ total - missing|length }}<span>/{{ total }}</span></p>
+    <p class="hint">Present in the tailored output. The count isn't comparable
+       between postings — read the misses.</p>
+    {% if missing %}
+    <h3>Not present</h3>
+    <ul class="chips miss">{% for k in missing %}<li>{{ k }}</li>{% endfor %}</ul>
+    {% endif %}
+  </article>
+</section>
+
+{% if r.tailored.get('changes_summary') %}
+<section class="card">
+  <h2>What it changed, and why</h2>
+  <ul class="decisions">
+    {% for c in r.tailored.changes_summary %}<li>{{ c }}</li>{% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+<section class="card preview">
+  <h2>The resume</h2>
+  <iframe src="{{ url_for('job_html', job_id=job.id) }}" title="Tailored resume"></iframe>
+</section>
+
+{% endblock %}

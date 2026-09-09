@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block body %}
+<section class="hero">
+  <h1>Tailor a resume to one posting</h1>
+  <p class="sub">Selects and orders bullets for the role, then checks every claim
+     in the result against your master resume before it will show it to you.</p>
+</section>
+
+{% if using_sample %}
+<p class="banner">
+  Running on <code>master_resume.example.json</code> — a fictional person.
+  Copy it to <code>master_resume.json</code> and edit that to use your own history.
+</p>
+{% endif %}
+
+<form method="post" action="{{ url_for('start') }}" class="card">
+  <label for="url">Job posting URL</label>
+  <input id="url" name="url" type="text" autofocus
+         placeholder="https://jobs.ashbyhq.com/company/…">
+  <p class="hint">Most boards work. If a posting is login-walled or bot-blocked,
+     paste the text instead.</p>
+
+  <details>
+    <summary>Paste the posting text instead</summary>
+    <textarea name="text" rows="8" placeholder="Paste the full job posting…"></textarea>
+  </details>
+
+  <label for="company">Company <span class="opt">optional — overrides what's read off the page</span></label>
+  <input id="company" name="company" type="text" placeholder="Acme">
+
+  <button type="submit">Tailor it</button>
+</form>
+
+<section class="loaded">
+  <h2>Master resume</h2>
+  <p><strong>{{ name }}</strong> · {{ roles|length }} roles · tracks:
+     {% for t in tracks %}<code>{{ t }}</code>{% if not loop.last %} {% endif %}{% endfor %}</p>
+  <p class="hint">{{ roles|join(' · ') }}</p>
+</section>
+{% endblock %}

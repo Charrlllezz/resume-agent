@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Working… · resume-agent{% endblock %}
+{% block body %}
+<section class="card running" data-job="{{ job.id }}">
+  <h1 id="headline">{{ "That didn't work" if failed else "Working on it" }}</h1>
+  <p class="sub {{ 'bad' if failed }}" id="sub">
+    {{ job.error if failed else (job.url or 'Reading the posting you pasted') }}</p>
+  <ol class="steps" id="steps">
+    {% for step, label in [('fetch','Fetch the posting'), ('analyze','Read the role'),
+                           ('fit','Judge the fit'), ('tailor','Select and order bullets'),
+                           ('render','Render'), ('pdf','Print the PDF'),
+                           ('qa','Verify every claim')] %}
+    <li data-step="{{ step }}"><span class="dot"></span>{{ label }}</li>
+    {% endfor %}
+  </ol>
+  <p class="hint" id="note">
+    {%- if failed %}<a href="{{ url_for('index') }}">Start over</a>
+    {%- else %}A run takes about 40–90 seconds. Three model calls do the thinking;
+    a browser does the fetching and the printing.{% endif %}</p>
+</section>
+
+{% if not failed %}
+<script>
+const ORDER = ["fetch","analyze","fit","tailor","render","pdf","qa","done"];
+const jobId = document.querySelector(".running").dataset.job;
+
+async function poll() {
+  const res = await fetch(`/job/${jobId}.json`);
+  const data = await res.json();
+
+  if (data.status === "done") { location.reload(); return; }
+  if (data.status === "error") {
+    document.getElementById("headline").textContent = "That didn't work";
+    document.getElementById("sub").textContent = data.error;
+    document.getElementById("sub").classList.add("bad");
+    document.getElementById("note").innerHTML =
+      'Try pasting the posting text instead — many boards block automated fetches. ' +
+      '<a href="/">Start over</a>.';
+    return;
+  }
+
+  const at = ORDER.indexOf(data.stage);
+  document.querySelectorAll(".steps li").forEach(li => {
+    const i = ORDER.indexOf(li.dataset.step);
+    li.classList.toggle("done", at > i && at !== -1);
+    li.classList.toggle("now", at === i);
+  });
+  const warn = data.events.filter(e => e.stage === "warn").pop();
+  if (warn) { document.getElementById("note").textContent = "⚠ " + warn.message; }
+  setTimeout(poll, 1000);
+}
+poll();
+</script>
+{% endif %}
+{% endblock %}

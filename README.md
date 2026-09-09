@@ -84,6 +84,24 @@ verdict, a QA report, and token usage with an estimated cost (~$0.14/role).
 
 QA errors suppress logging, so a bad run can't enter your tracker.
 
+## The web UI
+
+```bash
+python app.py          # -> http://127.0.0.1:5000
+```
+
+Paste a posting URL, watch it work, get a page with the tailored resume plus
+everything the pipeline knows about the role: the fit verdict with the resume
+evidence quoted for **each** requirement, every QA finding, the tailoring
+decisions, the ATS terms the output never says, and the PDF.
+
+The spreadsheet row is on that page too, as one small card — which is roughly
+the proportion of what a run produces that a spreadsheet can hold.
+
+A run takes 40–90s, so it happens on a worker thread and the page polls. This
+is the single-user local build: it trusts whoever can reach the port, reads
+your key from `.env`, and keeps runs in memory.
+
 ## A whole list at once
 
 ```bash
