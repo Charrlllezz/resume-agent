@@ -104,6 +104,25 @@ substitute occupies the same space, so line breaks land where they did.
 Every value the model returns is validated before it reaches a stylesheet. A
 colour that is not a hex triple is discarded, not interpolated.
 
+### Checking it by effect, not by grep
+
+Three style bugs got through a passing suite and were caught by a person
+looking at a screenshot: an overlay emitted before the sheet it overrode, so
+every rule lost on order while still being present in the text a test searched;
+a serif declared with a sans-serif fallback; a one-font resume rendering its
+dates in a monospace the original never had.
+
+All three were invisible because the tests grepped the CSS source. A string in
+a stylesheet is not evidence that a rule applied.
+
+`test_render.py` renders the page in a browser and asserts what the cascade
+actually produced. The load-bearing one is generic rather than per-element:
+**every font family on the page must be one the style asked for**, which
+catches stray type anywhere instead of only where someone thought to look.
+
+Each of the three bugs was reintroduced deliberately to confirm the suite fails
+on it. A regression test that has never failed is a guess.
+
 **What it does not do.** It matches typography, colour, chrome, alignment and
 density. It does not reproduce a two-column layout, a sidebar, a photo, or a
 graphic header — a resume built around those comes back single-column. And if
@@ -229,6 +248,7 @@ primitive pointed at cloud metadata.
 | `roles.py` | Role families: is a differently-worded title the same job? Imported, not run. |
 | `test_qa.py` | The test suite: QA, provenance, token accounting. Free and offline. Run it after changing `qa.py` or the prompts. |
 | `test_fit.py` | An eval for whether the fit assessment still discriminates. Calls the model, so it costs about $0.07 a run. |
+| `test_render.py` | Asserts computed style on a rendered page. Free and offline, but it needs a browser. Run it after touching `RESUME_CSS`, `PLAIN_CSS` or `style.py`. |
 
 `roles.tsv` and `resolved.tsv` are TSVs of `track⇥company⇥title⇥url`.
 See `saved_jobs.example.tsv` and `resolved.example.tsv` for the input formats.

@@ -367,18 +367,19 @@ expect(_dirty["accent"] == style_mod.DEFAULTS["accent"],
 expect(_dirty["header_align"] == "left", "an unknown alignment falls back")
 expect(_dirty["density"] == "normal", "an unknown density falls back")
 
-_plain = tr.style_block({**style_mod.DEFAULTS, "chrome": "plain"})
-_fancy = tr.style_block(style_mod.DEFAULTS)
-expect(".timeline::before { display: none; }" in _plain, "plain drops the timeline")
-expect("--radius: 0px" in _plain, "plain squares the corners")
-expect(".timeline::before { display: none; }" not in _fancy, "designed keeps it")
+# A resume set in one font must come back set in one font. Falling through to
+# a generic monospace for dates and taglines puts type on the page the original
+# never had, which is the opposite of matching it.
+expect(style_mod.from_fonts(["timesnewromanpsmt"])["font_mono"]
+       == style_mod.from_fonts(["timesnewromanpsmt"])["font_body"],
+       "a one-font document uses that font for everything, including dates")
+expect("mono" in style_mod.from_fonts(["ibmplexsans", "ibmplexmono"])["font_mono"].lower(),
+       "a document that really has a monospace keeps it")
 
-# The overlay only wins if it is emitted after the sheet it overrides.
-_html = tr.render_html({"headline": "x", "experience": [], "skills": {}},
-                       {**RESUME, "style": {"chrome": "plain"}})
-expect(_html.index("RESUME_CSS_MARKER" if False else ".timeline { position: relative")
-       < _html.index(".timeline::before { display: none; }"),
-       "the plain overlay is emitted after the base stylesheet")
+# Whether a rule actually applied is a question about the rendered page, not
+# about whether a string appears in a stylesheet -- three style bugs passed a
+# suite that grepped the CSS source. test_render.py asserts computed style in a
+# browser instead; run it after touching RESUME_CSS, PLAIN_CSS or style.py.
 
 
 print()

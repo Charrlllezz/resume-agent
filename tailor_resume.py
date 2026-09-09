@@ -668,7 +668,12 @@ PLAIN_CSS = """
   .node { margin-bottom: 15px; }
   .card-head .at { color: var(--ink); }
   .card-head .at::before { color: var(--line); }
-  .section-label { color: var(--ink); letter-spacing: .10em; }
+  /* Plain resumes still use their one colour somewhere, and section headings
+     are where it almost always is. Sending everything to --ink threw a
+     detected accent away entirely: a resume with blue headings came back
+     black, which is not "matching" it. Where the accent is #000000 this
+     renders black anyway, which is the right answer for that resume. */
+  .section-label { color: var(--accent); letter-spacing: .10em; }
   .section-label::after { background: var(--line); }
   .pill { background: transparent; border: 0; padding: 0 2px 0 0; color: var(--ink); }
   .pill:not(:last-child)::after { content: ","; color: var(--ink-soft); }
