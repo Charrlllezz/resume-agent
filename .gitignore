@@ -3,6 +3,7 @@
 # one. Committing any of it means a recruiter at a company you marked "skip"
 # can read that you did.
 master_resume.json
+master_resume.backup.json
 resumes/
 tailored_*
 applications.csv

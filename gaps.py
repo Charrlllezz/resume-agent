@@ -77,7 +77,7 @@ def main():
         print(f"[{i}/{len(rows)}] {row['company']} {label}...", flush=True)
         try:
             posting = tr.fetch_url(row["url"])
-            analysis = tr.analyze_job(client, posting)
+            analysis = tr.analyze_job(client, posting, resume)
         except Exception as e:
             print(f"      FAILED: {type(e).__name__}: {e}", flush=True)
             continue

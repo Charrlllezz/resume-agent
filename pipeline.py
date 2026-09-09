@@ -138,7 +138,7 @@ def run(*, resume: dict, client, url: str = "", text: str = "", company: str = "
                              "or bot-blocked. Paste the text instead.", result)
 
         progress("analyze", "Reading the posting", result)
-        result.analysis = tr.analyze_job(client, posting)
+        result.analysis = tr.analyze_job(client, posting, resume)
         result.role_title = result.analysis.get("role_title", "")
         result.company = company or result.analysis.get("company", "")
 

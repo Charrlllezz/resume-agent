@@ -21,7 +21,9 @@ sys.path.insert(0, str(Path(__file__).parent))
 import fit
 import tailor_resume as tr
 
-RESUME = json.loads(tr.MASTER_RESUME.read_text())
+# The fixture, not the user's resume -- the expected verdicts below are
+# calibrated against this specific history.
+RESUME = json.loads((Path(__file__).parent / "master_resume.example.json").read_text())
 
 # (requirement, acceptable statuses, why)
 CASES = [

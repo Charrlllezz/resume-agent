@@ -57,7 +57,7 @@ def load_rows(path: Path) -> list:
 def run_one(client, resume: dict, row: dict) -> dict:
     started = time.time()
     posting = tr.fetch_url(row["url"])
-    analysis = tr.analyze_job(client, posting)
+    analysis = tr.analyze_job(client, posting, resume)
     tailored = tr.tailor_resume(client, resume, analysis, posting)
     html = tr.render_html(tailored, resume)
     issues = qa.verify(tailored, resume, analysis, html)

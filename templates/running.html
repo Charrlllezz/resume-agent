@@ -4,17 +4,23 @@
 <section class="card running" data-job="{{ job.id }}">
   <h1 id="headline">{{ "That didn't work" if failed else "Working on it" }}</h1>
   <p class="sub {{ 'bad' if failed }}" id="sub">
-    {{ job.error if failed else (job.url or 'Reading the posting you pasted') }}</p>
+    {% if failed %}{{ job.error }}
+    {%- elif ingesting %}Transcribing it into structure — inventing nothing
+    {%- else %}{{ job.url or 'Reading the posting you pasted' }}{% endif %}</p>
   <ol class="steps" id="steps">
-    {% for step, label in [('fetch','Fetch the posting'), ('analyze','Read the role'),
-                           ('fit','Judge the fit'), ('tailor','Select and order bullets'),
-                           ('render','Render'), ('pdf','Print the PDF'),
-                           ('qa','Verify every claim')] %}
+    {% set steps = [('analyze','Read the document'), ('trace','Trace every bullet back to it')]
+                   if ingesting else
+                   [('fetch','Fetch the posting'), ('analyze','Read the role'),
+                    ('fit','Judge the fit'), ('tailor','Select and order bullets'),
+                    ('render','Render'), ('pdf','Print the PDF'),
+                    ('qa','Verify every claim')] %}
+    {% for step, label in steps %}
     <li data-step="{{ step }}"><span class="dot"></span>{{ label }}</li>
     {% endfor %}
   </ol>
   <p class="hint" id="note">
     {%- if failed %}<a href="{{ url_for('index') }}">Start over</a>
+    {%- elif ingesting %}Reading a resume takes about 20–40 seconds.
     {%- else %}A run takes about 40–90 seconds. Three model calls do the thinking;
     a browser does the fetching and the printing.{% endif %}</p>
 </section>

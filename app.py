@@ -24,6 +24,7 @@ from datetime import datetime
 from flask import (Flask, abort, jsonify, redirect, render_template, request,
                    Response, url_for)
 
+import ingest
 import pipeline
 import qa
 import tailor_resume as tr
@@ -181,6 +182,120 @@ def job_pdf(job_id):
                   f"{_resume()['contact']['name']} Resume {job.company}").strip("_")
     return Response(job.result.pdf, mimetype="application/pdf",
                     headers={"Content-Disposition": f'attachment; filename="{name}.pdf"'})
+
+
+# ---------------------------------------------------------------------------
+# Ingestion: upload a resume, review what was read out of it, commit it
+# ---------------------------------------------------------------------------
+
+DRAFTS: dict[str, dict] = {}
+MAX_UPLOAD = 8 * 1024 * 1024
+
+
+@app.get("/resume")
+def resume_page():
+    resume = _resume()
+    return render_template("resume.html", resume=resume,
+                           using_sample=tr.MASTER_RESUME.name.endswith("example.json"),
+                           bullets=sum(len(qa._flatten(r.get("bullets", {})))
+                                       for r in resume.get("experience", [])))
+
+
+@app.post("/resume/upload")
+def resume_upload():
+    upload = request.files.get("file")
+    if not upload or not upload.filename:
+        return redirect(url_for("resume_page"))
+    data = upload.read(MAX_UPLOAD + 1)
+    if len(data) > MAX_UPLOAD:
+        return render_template("resume.html", resume=_resume(), bullets=0,
+                               error="That file is over 8MB. A resume should be "
+                                     "a fraction of that — check it is the right file.")
+
+    draft_id = secrets.token_urlsafe(8)
+    job = Job(id=draft_id)
+    JOBS[draft_id] = job
+
+    # Read off the request here, not inside the thread. The request context is
+    # gone by the time the worker runs, and touching it there raises rather
+    # than returning a default.
+    filename = upload.filename
+    track = (request.form.get("track") or "").strip() or "general"
+
+    def work():
+        try:
+            job.status = "running"
+            job.note("analyze", "Reading the document")
+            draft, document, issues = ingest.ingest(
+                tr.make_client(), data, filename, track=track)
+            DRAFTS[draft_id] = {"draft": draft, "document": document,
+                                "issues": issues, "filename": filename}
+            job.status = "done"
+        except Exception as e:
+            job.status = "error"
+            job.error = friendly_error(e)
+            traceback.print_exc()
+
+    threading.Thread(target=work, daemon=True).start()
+    return redirect(url_for("resume_review", draft_id=draft_id))
+
+
+@app.get("/resume/review/<draft_id>")
+def resume_review(draft_id):
+    job = _job(draft_id)
+    if job.status == "error":
+        return render_template("running.html", job=job, failed=True)
+    if draft_id not in DRAFTS:
+        return render_template("running.html", job=job, ingesting=True)
+    d = DRAFTS[draft_id]
+    return render_template("review.html", draft_id=draft_id, d=d,
+                           draft=d["draft"], issues=d["issues"],
+                           errors=[i for i in d["issues"] if i.level == qa.ERROR],
+                           warns=[i for i in d["issues"] if i.level == qa.WARN])
+
+
+@app.post("/resume/review/<draft_id>")
+def resume_save(draft_id):
+    if draft_id not in DRAFTS:
+        abort(404)
+    draft = DRAFTS[draft_id]["draft"]
+    track = next(iter(draft.get("headlines") or {"general": []}))
+
+    # Rebuilt from the form, not from the draft: what the person reviewed and
+    # edited is the file, which is the whole point of this screen. The model's
+    # version is only ever a starting point.
+    edited = {
+        "contact": {k: (request.form.get(f"contact.{k}") or "").strip()
+                    for k in ("name", "phone", "email", "linkedin")},
+        "headlines": {track: [h.strip() for h in
+                              (request.form.get("headlines") or "").splitlines() if h.strip()]},
+        "experience": [],
+        "skills": draft.get("skills", {}),
+        "education": {k: (request.form.get(f"education.{k}") or "").strip()
+                      for k in ("degree", "school", "year")},
+    }
+    for i, role in enumerate(draft.get("experience", [])):
+        bullets = [b.strip() for b in
+                   (request.form.get(f"bullets.{i}") or "").splitlines() if b.strip()]
+        if not bullets:
+            continue
+        edited["experience"].append({
+            "company": (request.form.get(f"company.{i}") or "").strip(),
+            "location": (request.form.get(f"location.{i}") or "").strip(),
+            "dates": (request.form.get(f"dates.{i}") or "").strip(),
+            "titles": {track: (request.form.get(f"title.{i}") or "").strip()},
+            "bullets": {track: bullets},
+            "bullets_expected": role.get("bullets_expected", [3, 5]),
+        })
+
+    target = tr._HERE / "master_resume.json"
+    if target.exists():
+        backup = tr._HERE / "master_resume.backup.json"
+        backup.write_text(target.read_text(encoding="utf-8"), encoding="utf-8")
+    target.write_text(json.dumps(edited, indent=2, ensure_ascii=False) + "\n",
+                      encoding="utf-8")
+    DRAFTS.pop(draft_id, None)
+    return redirect(url_for("resume_page"))
 
 
 if __name__ == "__main__":

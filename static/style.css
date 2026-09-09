@@ -138,3 +138,14 @@ dd { margin: 0; text-align: right; font-size: .9rem; word-break: break-word; max
                      animation: pulse 1.2s ease-in-out infinite; }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
 .bad { color: var(--bad); }
+
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
+@media (max-width: 620px) { .pair { grid-template-columns: 1fr; } }
+.banner.good-banner { background: var(--good-bg); }
+input[type=file] { width: 100%; padding: 10px; border: 1px dashed var(--line);
+                   border-radius: 8px; background: var(--bg); color: var(--ink); font: inherit; }
+pre.doc { white-space: pre-wrap; word-break: break-word; font-size: .8rem;
+          color: var(--muted); max-height: 460px; overflow: auto; margin: 14px 0 0;
+          background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
+details.card summary { font-size: .82rem; text-transform: uppercase; letter-spacing: .09em;
+                       color: var(--muted); font-weight: 600; }

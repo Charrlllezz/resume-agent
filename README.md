@@ -32,6 +32,25 @@ Everything runs against `master_resume.example.json` (a fictional person) until
 you create `master_resume.json`, so you can see what it does before writing
 anything real. **`master_resume.json` is gitignored — keep it that way.**
 
+## Get your resume in
+
+Upload a PDF, DOCX or text resume at `/resume` and it is transcribed into the
+schema below — then **you review and edit it before anything is saved**.
+
+That review step is load-bearing, not ceremony. `qa.py` certifies tailored
+output by comparing it to `master_resume.json`. If a model wrote that file
+unsupervised, the fabrication guard would be a machine marking its own
+homework. A person has to commit to it for it to mean anything.
+
+Between the two, ingestion checks itself the same way the rest of the pipeline
+does: every extracted bullet is traced back to the document by string
+comparison, and every number in it is checked against the document's numbers —
+because changing "25+" to "250+" leaves a bullet 97% identical and completely
+false. Anything that doesn't trace is flagged on the review screen.
+
+Ingestion transcribes. It does not write bullets, add metrics, improve weak
+phrasing, or invent per-track variants.
+
 ## Write your master resume
 
 One file, everything you've actually done — more than fits on a page, because
@@ -184,6 +203,11 @@ that deleting a file later doesn't remove it from history.
   The old prompt accepted a name in the skills list as evidence, so across 58
   real postings 52 came back "Strong" and 35 had nothing unmet at all. Delete
   `rank_cache.json` if you want a list re-judged.
+- A PDF gives you text as rendered, so a headline set in small caps comes back
+  shouting. Ingestion transcribes faithfully, including that; fix it in review.
+- An ingested resume has one track and roughly five bullets a role, so there is
+  little for the tailoring to select between. It gets better as you add
+  bullets — that is where the tailoring actually happens.
 - QA verifies *provenance*, not truth. It proves the output matches your master
   resume. If that file overstates, QA will certify the overstatement.
 

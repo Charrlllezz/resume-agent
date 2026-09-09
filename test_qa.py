@@ -19,7 +19,12 @@ sys.path.insert(0, str(Path(__file__).parent))
 import qa
 import tailor_resume as tr
 
-RESUME = json.loads(tr.MASTER_RESUME.read_text())
+# Always the fixture, never tr.MASTER_RESUME. That resolves to the user's own
+# resume once they have one, and a suite that changes shape depending on whose
+# resume is on disk tests nothing -- it crashed outright the first time a real
+# one was ingested.
+SAMPLE = Path(__file__).parent / "master_resume.example.json"
+RESUME = json.loads(SAMPLE.read_text())
 # How many bullets the fixture takes per role. Derived, not hardcoded, so
 # the suite follows whatever resume is in place instead of one person's.
 COUNTS = {r["company"]: qa.expected_bullets(r)[1] for r in RESUME["experience"]}
@@ -219,7 +224,7 @@ for text, want_customer, label in [
     expect(got == want_customer, f"{label}: {text[:52]!r}")
 
 print("\nheadline (positioning is loose; seniority is not):")
-_master = json.loads(tr.MASTER_RESUME.read_text())
+_master = RESUME
 for headline, want_error, label in [
     ("AI Agents, Workflow Automation & Technical Implementation", False,
      "verbatim pick from the master pool"),
@@ -276,6 +281,48 @@ _threads = [threading.Thread(target=_one_run, args=(f"r{i}", i + 1)) for i in ra
 [t.join() for t in _threads]
 expect(_seen == {"r0": 1, "r1": 2, "r2": 3, "r3": 4},
        f"concurrent runs keep separate totals (got {_seen})")
+
+
+print("\ningestion provenance (a draft must trace to the document it came from):")
+import ingest
+
+_DOC = """Jordan Reyes
+jordan.reyes@example.com
+
+Northwind AI                                        Apr 2026 - Aug 2026
+Solutions Architect, New Verticals
+- Built the onboarding workflow that account teams now run on all 25+
+  enterprise accounts, trimming time-to-first-value by roughly 40%
+- Caught platform configuration issues before they reached the account team,
+  including scaling suppression logic past 1,000 domains
+"""
+
+
+def _draft(bullets):
+    return {"contact": {"name": "Jordan Reyes", "email": "jordan.reyes@example.com"},
+            "experience": [{"company": "Northwind AI", "bullets": {"general": bullets}}]}
+
+
+_real = ["Built the onboarding workflow that account teams now run on all 25+ "
+         "enterprise accounts, trimming time-to-first-value by roughly 40%"]
+
+expect(not [i for i in ingest.check(_draft(_real), _DOC) if i.level == qa.ERROR],
+       "accepts a bullet transcribed from the document")
+
+expect(any(i.check == "traced" for i in ingest.check(
+           _draft(["Drove $47M in net-new ARR and scaled the team from 3 to 60"]), _DOC)),
+       "catches a bullet that is not in the document at all")
+
+# Similarity will not catch this on its own: the bullet stays ~97% identical
+# and becomes entirely false. It is why numbers are checked separately.
+_inflated = [_real[0].replace("25+", "250+").replace("40%", "90%")]
+expect(any(i.check == "numbers" for i in ingest.check(_draft(_inflated), _DOC)),
+       "catches numbers inflated inside an otherwise real bullet")
+
+expect(any(i.check == "contact" for i in ingest.check(
+           {"contact": {"name": "Someone Else"}, "experience": [{"company": "X",
+            "bullets": {"general": _real}}]}, _DOC)),
+       "catches a name that is not in the document")
 
 
 print()

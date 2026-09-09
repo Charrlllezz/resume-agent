@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Review · resume-agent{% endblock %}
+{% block body %}
+<section class="hero">
+  <h1>Check this before it's saved</h1>
+  <p class="sub">Read out of <code>{{ d.filename }}</code>. Everything here is
+     editable, and what you save is what the QA layer will treat as true.</p>
+</section>
+
+{% if errors %}
+<p class="banner bad"><strong>{{ errors|length }}
+  {{ 'thing' if errors|length == 1 else 'things' }} didn't trace back to your
+  document.</strong> Either the text extraction mangled it, or it isn't in the
+  file. Fix or delete it — don't save something you can't stand behind.</p>
+{% elif not warns %}
+<p class="banner good-banner">Every bullet traced back to the document, and
+   every number in them appears in it.</p>
+{% endif %}
+
+{% if issues %}
+<section class="card">
+  <h2>Flagged</h2>
+  <ul class="findings">
+    {% for i in issues %}
+    <li><code>{{ i.check }}</code> {{ i.message }}</li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+<form method="post" class="card">
+  <h2>Contact</h2>
+  <div class="pair">
+    {% for f in ['name','phone','email','linkedin'] %}
+    <div><label for="c{{ f }}">{{ f }}</label>
+      <input id="c{{ f }}" name="contact.{{ f }}" type="text"
+             value="{{ draft.contact.get(f,'') }}"></div>
+    {% endfor %}
+  </div>
+
+  <h2 style="margin-top:28px">Headline</h2>
+  <textarea name="headlines" rows="2" data-autosize placeholder="One per line. Leave empty if you don't use one."
+    >{{ (draft.headlines.values()|list|first or [])|join('\n') }}</textarea>
+
+  {% for role in draft.experience %}
+  <h2 style="margin-top:28px">Role {{ loop.index }}</h2>
+  <div class="pair">
+    <div><label>company</label><input name="company.{{ loop.index0 }}" type="text" value="{{ role.company }}"></div>
+    <div><label>title</label><input name="title.{{ loop.index0 }}" type="text" value="{{ role.titles.values()|list|first }}"></div>
+    <div><label>location</label><input name="location.{{ loop.index0 }}" type="text" value="{{ role.location }}"></div>
+    <div><label>dates</label><input name="dates.{{ loop.index0 }}" type="text" value="{{ role.dates }}"></div>
+  </div>
+  <label>bullets <span class="opt">one per line — clear them all to drop this role</span></label>
+  <textarea name="bullets.{{ loop.index0 }}" rows="3" data-autosize
+    >{{ (role.bullets.values()|list|first)|join('\n') }}</textarea>
+  {% endfor %}
+
+  <h2 style="margin-top:28px">Education</h2>
+  <div class="pair">
+    {% for f in ['degree','school','year'] %}
+    <div><label for="e{{ f }}">{{ f }}</label>
+      <input id="e{{ f }}" name="education.{{ f }}" type="text"
+             value="{{ draft.education.get(f,'') }}"></div>
+    {% endfor %}
+  </div>
+
+  <button type="submit">Save as my master resume</button>
+  <p class="hint" style="margin-top:10px">Writes <code>master_resume.json</code>.
+     An existing one is copied to <code>master_resume.backup.json</code> first.</p>
+</form>
+
+<script>
+// Grow every box to its content, so nothing is hidden behind a scrollbar on
+// the screen whose whole job is letting you read this before you save it.
+function fit(el) { el.style.height = "auto"; el.style.height = el.scrollHeight + 4 + "px"; }
+document.querySelectorAll("textarea[data-autosize]").forEach(el => {
+  fit(el);
+  el.addEventListener("input", () => fit(el));
+});
+</script>
+
+<details class="card">
+  <summary>The text that was read out of the file</summary>
+  <pre class="doc">{{ d.document }}</pre>
+</details>
+{% endblock %}

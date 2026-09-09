@@ -195,7 +195,50 @@ def extract_json(response) -> dict:
     return json.loads(raw)
 
 
-def analyze_job(client: anthropic.Anthropic, job_posting: str) -> dict:
+# Default descriptions for the two tracks this started with. A resume may name
+# its tracks anything -- an uploaded one usually has just one -- so these are a
+# fallback for those two names, not a fixed list. Put a "tracks" block in the
+# master resume to describe your own.
+TRACK_HINTS = {
+    "gtm": "GTM Engineering, RevOps, Sales Ops, Growth Engineering, Marketing Ops, Automation",
+    "cs": "Customer Success, Implementation, Solutions Engineering, Account Management, Post-Sales",
+}
+
+
+def tracks_for(resume: dict) -> list:
+    """The track names this resume has actual content for, in a stable order.
+
+    Derived from the bullet pools, not from headlines. Headlines can carry
+    presentational variants with no bullets behind them -- "technical" is one
+    in the sample resume -- and offering the model a track it cannot then
+    select any experience for produces an empty resume.
+    """
+    found = set()
+    for role in resume.get("experience", []):
+        bullets = role.get("bullets")
+        if isinstance(bullets, dict):
+            found.update(k for k, v in bullets.items() if v)
+    return sorted(found)
+
+
+def track_block(resume: dict) -> tuple:
+    """(the JSON union for the prompt, the definitions beneath it).
+
+    These were hardcoded to gtm | cs | hybrid, which quietly described one
+    person's resume to everybody else's model -- and a resume ingested from an
+    uploaded PDF has a single track that is neither.
+    """
+    names = tracks_for(resume)
+    described = resume.get("tracks", {})
+    lines = [f"- {n}: {described.get(n) or TRACK_HINTS.get(n, n)}" for n in names]
+    options = names + (["hybrid"] if len(names) > 1 else [])
+    if len(names) > 1:
+        lines.append("- hybrid: role that draws roughly equally on more than one of the above")
+    return " | ".join(f'"{o}"' for o in options), "\n".join(lines)
+
+
+def analyze_job(client: anthropic.Anthropic, job_posting: str, resume: dict) -> dict:
+    track_options, track_defs = track_block(resume)
     response = send(
         client,
         model=MODEL,
@@ -205,7 +248,7 @@ def analyze_job(client: anthropic.Anthropic, job_posting: str) -> dict:
             "content": f"""Analyze this job posting and return ONLY a valid JSON object (no markdown, no explanation) with these exact fields:
 
 {{
-  "track": "gtm" | "cs" | "hybrid",
+  "track": {track_options},
   "company": "the hiring company's name as written in the posting, or empty string if not stated",
   "role_title": "exact job title from the posting",
   "required_skills": ["list of must-have skills/tools explicitly mentioned"],
@@ -232,9 +275,7 @@ not by the title:
 - customer_facing: owns customer relationships, renewals, onboarding, demos.
 
 track definitions:
-- gtm: GTM Engineering, RevOps, Sales Ops, Growth Engineering, Marketing Ops, Automation
-- cs: Customer Success, Implementation, Solutions Engineering, Account Management, Post-Sales
-- hybrid: role that equally weights both
+{track_defs}
 
 Job posting:
 {job_posting}"""
@@ -318,7 +359,7 @@ Rules:
   account team by building Y", not "built Y"). Do not drop technical substance to do this,
   and do not reword past what the source bullet actually says. You may reorder a bullet's
   clauses; you may not introduce a fact, tool, or number the source bullet does not contain.
-- For hybrid track, blend gtm and cs bullets across roles
+- For a hybrid track, blend bullets from the tracks the resume carries, across roles
 - Mirror ATS keywords verbatim in bullets where they appear naturally — do not force them
 - Only lightly edit a bullet to add a missing keyword if it genuinely belongs; otherwise use it as-is
 - Never fabricate metrics, tools, or experience not present in the master resume

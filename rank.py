@@ -113,7 +113,7 @@ def main():
                 if len(posting) < 500:
                     raise ValueError(f"posting too short ({len(posting)} chars) "
                                      "-- likely login-walled or filled")
-                analysis = tr.analyze_job(client, posting)
+                analysis = tr.analyze_job(client, posting, resume)
                 assessment = fit.assess(client, analysis, resume, tr.MODEL)
         except Exception as e:
             if out_of_credit(e):
