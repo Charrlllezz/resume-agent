@@ -1,5 +1,5 @@
 # fly launch --no-deploy will rewrite app/region; the rest is deliberate.
-app = "resume-agent"
+app = "charles-resume-agent"
 primary_region = "sjc"
 
 [build]
