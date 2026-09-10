@@ -652,12 +652,16 @@ def highlight_metrics(text: str) -> str:
 # Style: make the tailored resume look like the one that was uploaded
 # ---------------------------------------------------------------------------
 
-# Everything decorative about the house template -- the dotted canvas, the
-# timeline, the cards, the tinted pills -- is switched off here in one place.
-# A resume that arrived as black text on white has to leave as black text on
-# white; handing it back as a designed artifact is not tailoring, it is a
-# redesign nobody asked for.
-PLAIN_CSS = """
+# The dotted canvas, the timeline and the cards are this project's signature.
+# No uploaded resume has them. Applying them to somebody's document because it
+# was "designed" swaps their design for mine, which is the exact thing this
+# feature exists to stop -- a two-column resume lost its sidebar AND gained a
+# timeline it never had.
+#
+# So: any resume that came from a document is rendered on neutral structure, in
+# its own type and its own colour. The house decoration is what you get when
+# there is no source document to match.
+NEUTRAL_CSS = """
   html, body { background: #FFFFFF; background-image: none; }
   .page { max-width: 760px; padding: 40px 30px 60px; }
   .timeline { padding-left: 0; }
@@ -666,7 +670,6 @@ PLAIN_CSS = """
   .card { background: transparent; border: 0; border-radius: 0;
           box-shadow: none; padding: 0 0 2px 0; }
   .node { margin-bottom: 15px; }
-  .card-head .at { color: var(--ink); }
   .card-head .at::before { color: var(--line); }
   /* Plain resumes still use their one colour somewhere, and section headings
      are where it almost always is. Sending everything to --ink threw a
@@ -678,11 +681,17 @@ PLAIN_CSS = """
   .pill { background: transparent; border: 0; padding: 0 2px 0 0; color: var(--ink); }
   .pill:not(:last-child)::after { content: ","; color: var(--ink-soft); }
   .pills { gap: 3px; }
-  .bullets .m { background: transparent; color: inherit; padding: 0;
-                font-family: inherit; font-weight: 600; }
   .education { background: transparent; border: 0; border-radius: 0;
                box-shadow: none; padding: 4px 0 0 0; }
   .skill-group { padding: 2px 0; }
+"""
+
+# Structure is one question; how much colour a resume uses is another. A plain
+# document gets its emphasis in weight rather than in tinted chips.
+PLAIN_CSS = """
+  .bullets .m { background: transparent; color: inherit; padding: 0;
+                font-family: inherit; font-weight: 600; }
+  .card-head .at { color: var(--ink); }
 """
 
 COMPACT_CSS = """
@@ -705,6 +714,8 @@ def style_for(resume: dict) -> dict:
     given = {k: v for k, v in (resume.get("style") or {}).items() if v}
     spec = dict(style_mod.DEFAULTS)
     spec.update(given)
+    # A style block at all means this resume came from a document.
+    spec["from_document"] = bool(given)
     if given:
         if "font_display" not in given:
             spec["font_display"] = given.get("font_body", spec["font_display"])
@@ -753,6 +764,11 @@ def style_block(spec: dict) -> str:
   .hero {{ text-align: {spec.get("header_align", "left")}; }}
   .contact-row {{ justify-content: {"center" if spec.get("header_align") == "center" else "flex-start"}; }}
 """
+    # from_document is set for anything that came out of an upload. It is not
+    # the same question as plain-vs-designed: a colourful two-column resume is
+    # "designed" and still must not inherit this project's timeline.
+    if spec.get("from_document"):
+        css += NEUTRAL_CSS
     if plain:
         css += PLAIN_CSS
     if spec.get("density") == "compact":

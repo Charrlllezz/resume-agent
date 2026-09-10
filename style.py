@@ -33,6 +33,7 @@ DEFAULTS = {
     "accent_2": "#D7DCD3",
     "ink": "#171D1A",
     "header_align": "left",     # left | center
+    "from_document": False,     # set when the style came from an upload
     "density": "normal",        # normal | compact
 }
 

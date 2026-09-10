@@ -134,9 +134,19 @@ catches stray type anywhere instead of only where someone thought to look.
 Each of the three bugs was reintroduced deliberately to confirm the suite fails
 on it. A regression test that has never failed is a guess.
 
+**Two-column resumes.** The text comes out in the right order — the sidebar
+first, then the main column — and the model re-associates dates that float
+away from their roles. Content survives intact. The layout does not: you get a
+single column, in your type and your colours, with no sidebar.
+
+A resume that came from a document is never given this project's own
+decoration — the dotted canvas, the timeline, the cards. "Designed" means the
+document used colour, not that it used those. Rendering someone's two-column
+resume with a timeline it never had swaps their design for mine, which is the
+failure this whole section exists to prevent.
+
 **What it does not do.** It does not reproduce a two-column layout, a sidebar,
-a photo, or a graphic header — a resume built around those comes back
-single-column. A fifth distinct typeface collapses into the four roles. And
+a photo, or a graphic header. A fifth distinct typeface collapses into the four roles. And
 which font plays which role is model judgment, so a resume that sets its name
 and its headings in two different display faces can have one of them read as
 the other; the colours will still be exact. And if

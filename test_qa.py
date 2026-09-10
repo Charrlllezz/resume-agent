@@ -390,6 +390,24 @@ expect(style_mod._luma("#000000") < style_mod._luma("#2B2B2B") < style_mod._luma
        "luminance orders dark to light")
 
 
+# A PDF stores "fi" as one ligature glyph, so extraction returns a character
+# no one typed. The model transcribes it back correctly and the guard then
+# reports the name as missing -- a false positive in the fabrication check,
+# which teaches people to ignore it.
+_LIG_DOC = ("Dana Whit\ufb01eld\ndana.whit\ufb01eld@example.com\n"
+            "- Recti\ufb01ed the routing rules that raised speed-to-lead "
+            "from 14 hours to 40 minutes across three regional teams")
+_lig_draft = {"contact": {"name": "Dana Whitfield", "email": "dana.whitfield@example.com"},
+              "experience": [{"company": "Northgate", "bullets": {"general": [
+                  "Rectified the routing rules that raised speed-to-lead from 14 "
+                  "hours to 40 minutes across three regional teams"]}}]}
+expect(not ingest.check(_lig_draft, _LIG_DOC),
+       "a ligature in the PDF does not make a correct transcription look invented")
+expect("\ufb01" not in ingest.normalise(_LIG_DOC), "ligatures are folded")
+expect(ingest.normalise("soft\u00adhyphen") == "softhyphen", "soft hyphens are dropped")
+expect(ingest.normalise("curly\u2019s") == "curly's", "curly quotes are normalised")
+
+
 print()
 if failures:
     print(f"{len(failures)} FAILED")

@@ -206,6 +206,29 @@ def main():
         expect(found.get("accent") == "#000000",
                f"a black and white resume gets no invented accent (got {found.get('accent')})")
 
+
+        print("\nan uploaded resume never inherits this project's decoration:")
+        # "designed" means the document used colour, not that it used a dotted
+        # canvas and a timeline. A two-column resume lost its sidebar and
+        # gained a timeline it never had, which is the failure this feature
+        # exists to prevent.
+        html, _ = sample({"chrome": "designed", "accent": "#C1662F",
+                          "accent_2": "#1F3A5F", "ink": "#222222",
+                          "font_body": "'Lato', sans-serif",
+                          "google_fonts": ["Lato:wght@400;700"]})
+        page = browser.new_page(viewport={"width": 880, "height": 1000})
+        page.set_content(html, wait_until="networkidle")
+        look = page.evaluate(LOOK)
+        expect(look["body_bg_image"] == "none", "no dotted canvas on an uploaded resume")
+        expect(look["timeline_before"] == "none", "no timeline on an uploaded resume")
+        expect(look["card_border"] == "0px", "no cards on an uploaded resume")
+        heading = page.evaluate(
+            "() => getComputedStyle(document.querySelector('.section-label')).color")
+        rule = page.evaluate(
+            "() => getComputedStyle(document.querySelector('.section-label'), '::after').backgroundColor")
+        expect(heading == "rgb(193, 102, 47)", f"their first colour is used (got {heading})")
+        expect(rule == "rgb(31, 58, 95)", f"their second colour is used (got {rule})")
+
         browser.close()
 
     print()

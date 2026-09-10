@@ -21,6 +21,7 @@ rather than a spinner and a success message.
 
 import json
 import re
+import unicodedata
 from pathlib import Path
 
 import qa
@@ -61,12 +62,38 @@ def read_document(data: bytes, filename: str) -> str:
     else:
         text = data.decode("utf-8", errors="replace")
 
+    text = normalise(text)
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text).strip()
     if not text:
         raise ValueError("No text found in that file. A scanned or image-only "
                          "PDF has nothing to read — export a text PDF instead.")
     return text[:MAX_CHARS]
+
+
+def normalise(text: str) -> str:
+    """Undo what a PDF does to text on the way out.
+
+    A PDF stores "fi" as a single ligature glyph, so extraction returns
+    "Whitﬁeld" -- one character, U+FB01, where a person typed two. The model
+    transcribes it back to "Whitfield", correctly, and then the provenance
+    check reports that the name is not in the document. A false positive in
+    the fabrication guard is worse than a missing feature: it teaches whoever
+    reads it to ignore the guard.
+
+    NFKC folds the ligatures. The rest are the other things PDFs leave behind:
+    soft hyphens from justified text, non-breaking spaces, and the private-use
+    bullet glyphs some generators emit.
+    """
+    text = unicodedata.normalize("NFKC", text)
+    text = text.replace("\u00ad", "").replace("\u00a0", " ")
+    text = text.replace("\u200b", "").replace("\ufeff", "")
+    # Curly quotes and dashes are normalised on BOTH sides of the comparison,
+    # never in one place only, or the mismatch just moves.
+    for fancy, plain in (("\u2018", "'"), ("\u2019", "'"),
+                         ("\u201c", '"'), ("\u201d", '"')):
+        text = text.replace(fancy, plain)
+    return re.sub(r"[\uf000-\uf0ff]", " ", text)
 
 
 EXTRACT = """Here is the plain text of someone's resume:
@@ -134,12 +161,14 @@ def check(draft: dict, document: str) -> list:
     issues = []
     # Compared against whole lines rather than the raw blob so a bullet has
     # something the same shape to match: PDF extraction breaks lines mid-phrase.
+    document = normalise(document)
     lines = [ln for ln in document.splitlines() if len(ln.strip()) > 25]
     pool = lines + [" ".join(lines[i:i + 3]) for i in range(len(lines))]
 
     for role in draft.get("experience", []):
         company = role.get("company", "?")
         for bullet in qa._flatten(role.get("bullets", {})):
+            bullet = normalise(bullet)
             score, _ = qa._best_bullet_match(bullet, pool)
             if score < TRACED:
                 issues.append(qa.Issue(
@@ -161,7 +190,7 @@ def check(draft: dict, document: str) -> list:
 
     contact = draft.get("contact", {})
     for field in ("name", "email"):
-        value = (contact.get(field) or "").strip()
+        value = normalise((contact.get(field) or "").strip())
         if value and value.lower() not in document.lower():
             issues.append(qa.Issue(qa.WARN, "contact",
                                    f"{field} '{value}' is not in the document"))
