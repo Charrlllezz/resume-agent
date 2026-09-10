@@ -75,6 +75,10 @@ ERROR_HINTS = (
 
 
 def friendly_error(e: Exception) -> str:
+    # A ValueError raised in this codebase is already a sentence written for
+    # the person reading it. Prefixing it with the class name is noise.
+    if isinstance(e, ValueError) and str(e):
+        return sessions.redact(str(e))
     raw = f"{type(e).__name__}: {e}"
     for needle, hint in ERROR_HINTS:
         if needle.lower() in raw.lower():

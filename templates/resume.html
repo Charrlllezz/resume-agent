@@ -30,9 +30,10 @@
 <form method="post" action="{{ url_for('resume_upload') }}"
       enctype="multipart/form-data" class="card">
   <label for="file">Upload a resume</label>
-  <input id="file" name="file" type="file" accept=".pdf,.docx,.txt,.md" required>
-  <p class="hint">PDF, DOCX, or plain text, up to 8MB. A scanned or image-only
-     PDF has no text to read — export a text one.</p>
+  <input id="file" name="file" type="file" accept=".pdf,.docx,.txt,.md,.markdown" required>
+  <p class="hint">PDF, DOCX, or plain text, up to 8MB. Not <code>.doc</code>,
+     <code>.rtf</code> or Pages — open those and export a PDF first. A scanned
+     or image-only PDF has no text to read either.</p>
 
   <label for="track">Call this track <span class="opt">optional</span></label>
   <input id="track" name="track" type="text" placeholder="general">

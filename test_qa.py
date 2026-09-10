@@ -543,6 +543,31 @@ expect(_facts["sections"].get("experience") is None
 expect(any(c == "#000000" for c, _n in _facts["colours"]),
        "an unset colour resolves to the document default, not to nothing")
 
+print("\nuploads that cannot be read say so, rather than producing nonsense:")
+for _name, _data, _expect in [
+    ("old.doc", b"\xd0\xcf\x11\xe0" + b"\x00" * 1000, "Save As"),
+    ("resume.rtf", rb"{\rtf1\ansi Jane Doe\par}", "RTF"),
+    ("resume.pages", b"PK\x03\x04" + b"\x00" * 400, "Pages"),
+    ("resume.png", b"\x89PNG\r\n\x1a\n" + b"\x00" * 400, "image"),
+    ("resume.xyz", b"whatever", "isn't supported"),
+    ("binary.txt", b"\x00\x01\x02\x03" * 300, "text file"),
+]:
+    try:
+        ingest.read_document(_data, _name)
+        expect(False, f"{_name} is refused rather than parsed as text")
+    except ValueError as _e:
+        expect(_expect.lower() in str(_e).lower(),
+               f"{_name}: {str(_e)[:58]}")
+
+# An RTF decoded as text used to reach the model as a draft full of control
+# words. Silent garbage is a worse outcome than a refusal.
+expect(ingest.read_document(b"Jane Doe\nSenior Engineer\n- Did a thing", "r.txt"),
+       "a real text file still reads")
+expect(ingest._looks_binary("\x00\x01\x02" * 200), "binary content is recognised")
+expect(not ingest._looks_binary("Perfectly ordinary resume text, with punctuation."),
+       "ordinary prose is not")
+
+
 print()
 if failures:
     print(f"{len(failures)} FAILED")

@@ -37,9 +37,30 @@ TRACED = 0.75
 MAX_CHARS = 60_000
 
 
+# Formats that carry a resume but that this cannot read, each with the thing
+# to do about it. Falling through to "decode it as text" turned an .rtf into
+# a draft full of \rtf1\ansi control words -- silent garbage is a worse
+# outcome than a refusal.
+UNREADABLE = {
+    ".doc": "Word's older .doc format can't be read here. Open it and use "
+            "File > Save As to make a .docx or a PDF.",
+    ".rtf": "RTF can't be read here. Export it as a PDF or a .docx.",
+    ".pages": "Pages files can't be read here. Use File > Export To > PDF.",
+    ".odt": "OpenDocument files can't be read here. Export as PDF or .docx.",
+    ".jpg": "That's an image. A resume needs to have text in it — export a PDF.",
+    ".jpeg": "That's an image. A resume needs to have text in it — export a PDF.",
+    ".png": "That's an image. A resume needs to have text in it — export a PDF.",
+    ".heic": "That's an image. A resume needs to have text in it — export a PDF.",
+}
+
+TEXT_SUFFIXES = (".txt", ".md", ".markdown", ".text", "")
+
+
 def read_document(data: bytes, filename: str) -> str:
     """Plain text out of a PDF, DOCX, or text file."""
     suffix = Path(filename).suffix.lower()
+    if suffix in UNREADABLE:
+        raise ValueError(UNREADABLE[suffix])
 
     if suffix == ".pdf":
         import io
@@ -47,11 +68,16 @@ def read_document(data: bytes, filename: str) -> str:
         from pypdf import PdfReader
         pages = [p.extract_text() or "" for p in PdfReader(io.BytesIO(data)).pages]
         text = "\n".join(pages)
-    elif suffix in (".docx", ".doc"):
+    elif suffix == ".docx":
         import io
 
         import docx
-        d = docx.Document(io.BytesIO(data))
+        try:
+            d = docx.Document(io.BytesIO(data))
+        except Exception:
+            raise ValueError(
+                "That file isn't a readable .docx. If it came from an older "
+                "version of Word, open it and Save As .docx or PDF.")
         blocks = [p.text for p in d.paragraphs]
         # Plenty of resumes lay themselves out in a table; ignoring tables
         # silently drops entire roles.
@@ -59,8 +85,14 @@ def read_document(data: bytes, filename: str) -> str:
             for row in table.rows:
                 blocks.extend(c.text for c in row.cells)
         text = "\n".join(blocks)
-    else:
+    elif suffix in TEXT_SUFFIXES:
         text = data.decode("utf-8", errors="replace")
+        if _looks_binary(text):
+            raise ValueError("That doesn't look like a text file. Upload a PDF "
+                             "or a .docx instead.")
+    else:
+        raise ValueError(f"{suffix or 'That file type'} isn't supported. "
+                         "Upload a PDF, a .docx, or a plain text file.")
 
     text = normalise(text)
     text = re.sub(r"[ \t]+", " ", text)
@@ -69,6 +101,16 @@ def read_document(data: bytes, filename: str) -> str:
         raise ValueError("No text found in that file. A scanned or image-only "
                          "PDF has nothing to read — export a text PDF instead.")
     return text[:MAX_CHARS]
+
+
+def _looks_binary(text: str) -> bool:
+    """Enough replacement characters or control bytes to be a binary file."""
+    if not text:
+        return False
+    sample = text[:4000]
+    odd = sum(1 for ch in sample
+              if ch == "�" or (ord(ch) < 32 and ch not in "\n\r\t"))
+    return odd / len(sample) > 0.02
 
 
 def normalise(text: str) -> str:
