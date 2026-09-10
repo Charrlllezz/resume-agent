@@ -17,12 +17,18 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends fonts-ibm-plex \
  && rm -rf /var/lib/apt/lists/*
 
+# One variable font covering every weight, from the Google Fonts repo. The
+# upstream project's per-weight TTF paths 404 -- with curl -f that fails the
+# build, which is the good outcome; without it the image would ship missing a
+# font and every PDF would come out in a fallback face at a different height.
 RUN mkdir -p /usr/share/fonts/truetype/space-grotesk \
- && for w in Regular Medium Bold; do \
-      curl -fsSL -o "/usr/share/fonts/truetype/space-grotesk/SpaceGrotesk-$w.ttf" \
-      "https://github.com/floriankarsten/space-grotesk/raw/master/fonts/ttf/SpaceGrotesk-$w.ttf"; \
-    done \
- && fc-cache -f
+ && curl -fsSL -o /usr/share/fonts/truetype/space-grotesk/SpaceGrotesk.ttf \
+      "https://raw.githubusercontent.com/google/fonts/main/ofl/spacegrotesk/SpaceGrotesk%5Bwght%5D.ttf" \
+ && fc-cache -f \
+ && fc-list | grep -qi "IBM Plex Sans" \
+ && fc-list | grep -qi "IBM Plex Mono" \
+ && fc-list | grep -qi "Space Grotesk" \
+ && echo "fonts present"
 
 WORKDIR /app
 COPY requirements.txt .
