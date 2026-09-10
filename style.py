@@ -33,6 +33,11 @@ DEFAULTS = {
     "accent_2": "#D7DCD3",
     "ink": "#171D1A",
     "header_align": "left",     # left | center
+    "layout": "single",         # single | two-column
+    "sidebar_side": "left",
+    "sidebar_width": 32,
+    "sidebar_bg": "",
+    "sidebar_sections": [],
     "from_document": False,     # set when the style came from an upload
     "density": "normal",        # normal | compact
 }
@@ -215,6 +220,12 @@ def from_fonts(names: list) -> dict:
 def merge(base: dict, judged: dict) -> dict:
     """Model judgment on top of the deterministic base, keys we allow only."""
     out = dict(base)
+    sections = (judged or {}).get("sidebar_sections")
+    if isinstance(sections, list):
+        # Constrained to sections that exist, so a hallucinated one cannot
+        # silently drop a real section out of the rendered page.
+        out["sidebar_sections"] = [x for x in sections
+                                   if x in ("contact", "skills", "education")]
     for key in ("chrome", "accent", "accent_2", "ink", "header_align", "density"):
         value = (judged or {}).get(key)
         if isinstance(value, str) and value.strip():
@@ -301,6 +312,139 @@ def colours_for(data: bytes) -> dict:
     return {"ink": ink, "accent": accent, "accent_2": accent_2}
 
 
+def layout_from_pdf(data: bytes) -> dict:
+    """Column geometry, read off the page rather than guessed at.
+
+    Two things give a sidebar away and both are in the file: text x-positions
+    fall into two clusters with a wide gap between them, and a panel sidebar is
+    a single large filled rectangle down one edge. Neither needs a model.
+
+    Returns {} when the page is a single column, which is the common case.
+    """
+    import collections
+    import io
+
+    from pypdf import PdfReader
+    from pypdf.generic import ContentStream
+
+    reader = PdfReader(io.BytesIO(data))
+    page = reader.pages[0]
+    width = float(page.mediabox.width) or 612.0
+    height = float(page.mediabox.height) or 792.0
+
+    # A filled panel down one edge is the strongest signal there is, and it
+    # carries the geometry with it. Checked before the text clustering, which
+    # is a heuristic and was bailing out before this ever ran.
+    panel = _panel(data, width, height)
+    if panel:
+        px, pw, colour = panel
+        return {"layout": "two-column",
+                "sidebar_side": "left" if px < width / 2 else "right",
+                "sidebar_width": max(22, min(45, round(100 * pw / width))),
+                "sidebar_bg": colour}
+
+    xs = []
+
+    def visit(text, cm, tm, font_dict, font_size):
+        if text and text.strip():
+            # Weighted by how much text sits there, not by how many runs. A
+            # single right-floated date is two runs and twenty-six characters;
+            # a sidebar is a few hundred. Counting runs called a plain
+            # single-column resume two-column.
+            xs.append((float(tm[4]), len(text.strip())))
+
+    try:
+        page.extract_text(visitor_text=visit)
+    except Exception:
+        return {}
+    # Runs sitting outside the page are floats the renderer placed oddly; they
+    # say nothing about where the columns are.
+    xs = [(x, n) for x, n in xs if 0 <= x <= width]
+    if len(xs) < 12:
+        return {}
+
+    buckets = collections.Counter()
+    for x, n in xs:
+        buckets[int(x // 20) * 20] += n
+    used = sorted(buckets)
+    gaps = [(a, b) for a, b in zip(used, used[1:]) if b - a >= 60]
+    if not gaps:
+        return {}
+    # The widest gap is the gutter. More than one means a table, not a sidebar.
+    gutter = max(gaps, key=lambda ab: ab[1] - ab[0])
+    split = (gutter[0] + gutter[1]) / 2
+    left = sum(n for b, n in buckets.items() if b < split)
+    right = sum(n for b, n in buckets.items() if b >= split)
+    # A sidebar carries contact details, skills and education -- always a
+    # substantial share of the page. Floated dates carry a handful of
+    # characters and must not be mistaken for one.
+    if min(left, right) < 0.15 * (left + right) or min(left, right) < 120:
+        return {}
+
+    # No panel: a sidebar set on plain white, inferred from where the text is.
+    side = "left" if left <= right else "right"
+    pct = round(100 * (split / width if side == "left" else 1 - split / width))
+    return {"layout": "two-column", "sidebar_side": side,
+            "sidebar_width": max(22, min(45, pct)), "sidebar_bg": ""}
+
+
+def _panel(data: bytes, width: float, height: float):
+    """(x, width, hex) of a large filled block down one edge, if there is one."""
+    import io
+
+    from pypdf import PdfReader
+    from pypdf.generic import ContentStream
+
+    reader = PdfReader(io.BytesIO(data))
+    try:
+        stream = ContentStream(reader.pages[0].get_contents(), reader)
+    except Exception:
+        return None
+    # Rectangles are in user space and the page has a transform on it -- for a
+    # browser-generated PDF, 0.75 to turn CSS pixels into points. Comparing an
+    # untransformed width against the page width reported a 34% sidebar as 45%.
+    fill, pending, found = None, [], []
+    ctm = (1.0, 1.0, 0.0, 0.0)      # sx, sy, tx, ty
+    stack = []
+    for operands, op in stream.operations:
+        name = op.decode() if isinstance(op, bytes) else str(op)
+        try:
+            if name == "q":
+                stack.append(ctm)
+            elif name == "Q" and stack:
+                ctm = stack.pop()
+            elif name == "cm" and len(operands) == 6:
+                a, _b, _c, d, e, f = (float(v) for v in operands)
+                sx, sy, tx, ty = ctm
+                ctm = (sx * a, sy * d, tx + sx * e, ty + sy * f)
+            elif name == "rg" and len(operands) == 3:
+                fill = tuple(round(float(x) * 255) for x in operands)
+            elif name == "g" and len(operands) == 1:
+                v = round(float(operands[0]) * 255)
+                fill = (v, v, v)
+            elif name == "re" and len(operands) == 4:
+                pending.append(tuple(float(x) for x in operands))
+            elif name in ("f", "f*", "F"):
+                sx, sy, tx, _ty = ctm
+                for x, y, w, h in pending:
+                    x = tx + sx * x
+                    w, h = abs(sx * w), abs(sy * h)
+                    # Tall, narrow, and against an edge: a sidebar. A full-page
+                    # rectangle is the page background, not a column.
+                    if (h > 0.6 * height and 0.15 * width < w < 0.55 * width
+                            and (x < 0.05 * width or x + w > 0.95 * width)):
+                        found.append((x, w, fill))
+                pending = []
+            elif name in ("S", "s", "n", "B", "b"):
+                pending = []
+        except (ValueError, TypeError, IndexError):
+            pending = []
+    if not found:
+        return None
+    x, w, colour = max(found, key=lambda f: f[1])
+    return x, w, ("#%02X%02X%02X" % colour if colour else "")
+
+
 DESCRIBE = """Describe only the VISUAL STYLE of this resume. Ignore what it says.
 
 The fonts actually embedded in the file are: {fonts}
@@ -311,6 +455,7 @@ that is not there -- a wrong family changes every line break in the output.
 Return ONLY this JSON:
 {{
   "chrome": "plain" | "designed",
+  "sidebar_sections": ["contact" and/or "skills" and/or "education"],
   "accent": "#rrggbb",
   "accent_2": "#rrggbb",
   "ink": "#rrggbb",
@@ -328,7 +473,11 @@ Return ONLY this JSON:
 - Colour is read out of the file separately and is not your job. The values
   you return for it are only a fallback for when that fails.
 - "ink": the body text colour, usually near-black.
-- "density": "compact" if it is packed to fit a page, "normal" otherwise."""
+- "density": "compact" if it is packed to fit a page, "normal" otherwise.
+- "sidebar_sections": ONLY if this resume has a sidebar column. List which of
+  contact, skills and education sit in it. Return an empty list if there is no
+  sidebar, or if none of those three are in it. Whether a sidebar exists at all
+  is measured separately -- this is only about what is in it."""
 
 
 def describe(client, data: bytes, filename: str, model: str) -> dict:
@@ -408,4 +557,18 @@ def detect(client, data: bytes, filename: str, model: str) -> dict:
         exact = colours_for(data) if filename.lower().endswith(".pdf") else {}
     except Exception:
         exact = {}
-    return merge(spec, {**judged, **exact})
+    try:
+        geometry = layout_from_pdf(data) if filename.lower().endswith(".pdf") else {}
+    except Exception:
+        geometry = {}
+    merged = merge(spec, {**judged, **exact})
+    # Geometry is measured, so it wins outright. If there is no sidebar, any
+    # sections the model wanted to put in one are dropped with it.
+    if geometry:
+        merged.update(geometry)
+        if not merged.get("sidebar_sections"):
+            merged["sidebar_sections"] = ["contact", "skills", "education"]
+    else:
+        merged["layout"] = "single"
+        merged["sidebar_sections"] = []
+    return merged

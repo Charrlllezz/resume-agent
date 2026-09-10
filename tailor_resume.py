@@ -694,6 +694,36 @@ PLAIN_CSS = """
   .card-head .at { color: var(--ink); }
 """
 
+# A sidebar that runs the height of the page, in the colour the original used.
+# The paddings live on the inner columns rather than on .page so the panel
+# bleeds to the edge the way it did in the document it came from.
+TWO_COL_CSS = """
+  /* min-height matters more than it looks. The PDF is printed at whichever is
+     taller, the content or the viewport, so a short resume leaves empty page
+     below the grid -- and the sidebar panel stopped there, three-fifths of the
+     way down, instead of running the full height the way it did in the
+     document it came from. */
+  .page.two-col { display: grid; max-width: 900px; margin: 0 auto;
+                  padding: 0; align-items: stretch; min-height: 100vh; }
+  .page.two-col .side { background: var(--sidebar-bg); color: var(--sidebar-ink);
+                        padding: 40px 24px 50px; height: 100%; }
+  .page.two-col .main { padding: 40px 32px 60px; min-width: 0; }
+  .side .section-label { color: var(--sidebar-ink); opacity: .85; }
+  .side .section-label::after { background: var(--sidebar-ink); opacity: .35; }
+  .side .pill { color: var(--sidebar-ink); border-color: currentColor;
+                background: transparent; }
+  .side .skill-label { color: var(--sidebar-ink); opacity: .7; }
+  .side .skill-group { display: block; }
+  .side .pills { margin-top: 4px; }
+  .side .education { background: transparent; border: 0; box-shadow: none;
+                     padding: 0; display: block; }
+  .side .degree, .side .school { color: var(--sidebar-ink); display: block;
+                                 text-align: left; }
+  .contact-stack { display: flex; flex-direction: column; gap: 5px;
+                   font-size: 12.5px; font-family: var(--font-mono);
+                   word-break: break-word; }
+"""
+
 COMPACT_CSS = """
   .page { padding: 30px 30px 40px; }
   .bullets li { font-size: 13px; line-height: 1.42; margin-bottom: 4px; }
@@ -760,6 +790,8 @@ def style_block(spec: dict) -> str:
     --font-heading: {spec["font_heading"]};
     --font-mono: {spec["font_mono"]};
     --accent-2: {spec["accent_2"]};
+    --sidebar-bg: {spec.get("sidebar_bg") or "#F2F3F0"};
+    --sidebar-ink: {sidebar_ink(spec)};
   }}
   .hero {{ text-align: {spec.get("header_align", "left")}; }}
   .contact-row {{ justify-content: {"center" if spec.get("header_align") == "center" else "flex-start"}; }}
@@ -771,9 +803,30 @@ def style_block(spec: dict) -> str:
         css += NEUTRAL_CSS
     if plain:
         css += PLAIN_CSS
+    if spec.get("layout") == "two-column":
+        pct = spec.get("sidebar_width") or 32
+        columns = (f"{pct}% 1fr" if spec.get("sidebar_side", "left") == "left"
+                   else f"1fr {pct}%")
+        css += TWO_COL_CSS + f"\n  .page.two-col {{ grid-template-columns: {columns}; }}\n"
     if spec.get("density") == "compact":
         css += COMPACT_CSS
     return css
+
+
+def sidebar_ink(spec: dict) -> str:
+    """Text colour for the panel: white on a dark one, the body ink on a pale one.
+
+    Derived rather than detected. Reading the text colour inside the sidebar
+    band would mean tracking x-positions through the colour parser for a value
+    that is, in practice, one of two.
+    """
+    bg = spec.get("sidebar_bg") or ""
+    try:
+        r, g, b = (int(bg[i:i + 2], 16) for i in (1, 3, 5))
+    except (ValueError, IndexError):
+        return spec.get("ink", "#171D1A")
+    return "#FFFFFF" if (0.299 * r + 0.587 * g + 0.114 * b) / 255 < 0.55 \
+        else spec.get("ink", "#171D1A")
 
 
 def font_link(spec: dict) -> str:
@@ -783,6 +836,57 @@ def font_link(spec: dict) -> str:
     return ('<link rel="preconnect" href="https://fonts.googleapis.com">\n'
             f'<link href="https://fonts.googleapis.com/css2?{families}&display=swap" '
             'rel="stylesheet">')
+
+
+def body_html(spec: dict, c: dict, tailored: dict, nodes_html: list,
+              skills_html: list, edu: dict) -> str:
+    """The page, in one column or two.
+
+    Where a resume had a sidebar it gets one back: same sections, same side,
+    same width, same colour -- all four read off the file rather than guessed.
+    Which sections belong in it is the only judged part.
+    """
+    e = html_lib.escape
+    contact_inline = (
+        '<div class="contact-row">'
+        f'<span>{e(c["phone"])}</span><span class="sep">&#183;</span>'
+        f'<span>{e(c["email"])}</span><span class="sep">&#183;</span>'
+        f'<span>{e(c["linkedin"])}</span></div>')
+    contact_stacked = (
+        '<div class="section-label">Contact</div><div class="contact-stack">'
+        f'<span>{e(c["phone"])}</span><span>{e(c["email"])}</span>'
+        f'<span>{e(c["linkedin"])}</span></div>')
+    experience = ('<div class="section-label">Experience</div>'
+                  '<div class="timeline">' + "".join(nodes_html) + '</div>')
+    skills = ('<div class="section-label">Skills</div>'
+              '<div class="skills">' + "".join(skills_html) + '</div>')
+    education = (
+        '<div class="section-label">Education</div><div class="education">'
+        f'<span class="degree">{e(edu["degree"])}</span>'
+        f'<span class="school">{e(edu["school"])} &#183; {e(edu["year"])}</span></div>')
+
+    hero_open = f'<header class="hero"><h1>{e(c["name"])}</h1>'
+    tagline = f'<div class="tagline">{e(tailored["headline"])}</div>'
+
+    if spec.get("layout") != "two-column":
+        return ('  <div class="page">' + hero_open + tagline + contact_inline
+                + '</header>' + experience + skills + education + '</div>')
+
+    wanted = set(spec.get("sidebar_sections") or ["contact", "skills", "education"])
+    side, main = [], []
+    if "contact" in wanted:
+        side.append(contact_stacked)
+    (side if "skills" in wanted else main).append(skills)
+    (side if "education" in wanted else main).append(education)
+    main.insert(0, experience)
+
+    hero = (hero_open + tagline
+            + ("" if "contact" in wanted else contact_inline) + "</header>")
+    aside = '<aside class="side">' + "".join(side) + "</aside>"
+    body = '<div class="main">' + hero + "".join(main) + "</div>"
+    order = ([aside, body] if spec.get("sidebar_side", "left") == "left"
+             else [body, aside])
+    return '  <div class="page two-col">' + "".join(order) + "</div>"
 
 
 def render_html(tailored: dict, resume: dict) -> str:
@@ -846,35 +950,7 @@ def render_html(tailored: dict, resume: dict) -> str:
 </style>
 </head>
 <body>
-  <div class="page">
-    <header class="hero">
-      <h1>{html_lib.escape(c["name"])}</h1>
-      <div class="tagline">{html_lib.escape(tailored["headline"])}</div>
-      <div class="contact-row">
-        <span>{html_lib.escape(c["phone"])}</span>
-        <span class="sep">&#183;</span>
-        <span>{html_lib.escape(c["email"])}</span>
-        <span class="sep">&#183;</span>
-        <span>{html_lib.escape(c["linkedin"])}</span>
-      </div>
-    </header>
-
-    <div class="section-label">Experience</div>
-    <div class="timeline">
-      {"".join(nodes_html)}
-    </div>
-
-    <div class="section-label">Skills</div>
-    <div class="skills">
-      {"".join(skills_html)}
-    </div>
-
-    <div class="section-label">Education</div>
-    <div class="education">
-      <span class="degree">{html_lib.escape(edu["degree"])}</span>
-      <span class="school">{html_lib.escape(edu["school"])} · {html_lib.escape(edu["year"])}</span>
-    </div>
-  </div>
+{body_html(spec, c, tailored, nodes_html, skills_html, edu)}
 </body>
 </html>"""
 

@@ -229,6 +229,85 @@ def main():
         expect(heading == "rgb(193, 102, 47)", f"their first colour is used (got {heading})")
         expect(rule == "rgb(31, 58, 95)", f"their second colour is used (got {rule})")
 
+
+        print("\nlayout detection (measured, not guessed):")
+        import style as style_mod
+
+        two_col = """<!doctype html><meta charset=utf-8><style>
+          body{font-family:Arial;margin:0;color:#222}
+          .w{display:grid;grid-template-columns:34% 66%;min-height:100vh}
+          .s{background:#1F3A5F;color:#fff;padding:30px 20px}
+          .m{padding:30px 26px}</style>
+          <div class=w><div class=s>
+            <h3>Contact</h3><p>(555) 010-9911<br>someone@example.com<br>Austin, TX</p>
+            <h3>Skills</h3><p>Salesforce, Marketo, SQL and Looker, Territory design</p>
+            <h3>Education</h3><p>BS Economics, University of Texas, 2018</p></div>
+          <div class=m><h1>Dana Whitfield</h1><h2>Experience</h2>
+            <p>Revenue Operations Manager, Northgate Systems, 2023 to 2026</p>
+            <ul><li>Rebuilt territory and quota planning for a 55-person sales
+            organization, cutting planning cycle time from six weeks to nine days.</li></ul>
+          </div></div>"""
+        page = browser.new_page()
+        page.set_content(two_col, wait_until="networkidle")
+        page.pdf(path="/tmp/_two.pdf", format="Letter", print_background=True)
+        got = style_mod.layout_from_pdf(Path("/tmp/_two.pdf").read_bytes())
+        expect(got.get("layout") == "two-column", f"a sidebar is detected (got {got})")
+        expect(got.get("sidebar_side") == "left", "on the correct side")
+        expect(abs(got.get("sidebar_width", 0) - 34) <= 3,
+               f"at the right width (got {got.get('sidebar_width')}, want 34)")
+        expect(got.get("sidebar_bg") == "#1F3A5F",
+               f"in the exact colour (got {got.get('sidebar_bg')})")
+
+        # Right-floated dates are two runs and a few characters. Counting runs
+        # rather than characters called a plain resume two-column.
+        floated = """<!doctype html><meta charset=utf-8><style>
+          body{font-family:Arial;margin:0;padding:40px;color:#222}
+          .d{float:right;color:#777}</style>
+          <h1>Someone Ordinary</h1>
+          <p><span class=d>2023 - 2026</span><b>Senior Manager, Acme</b></p>
+          <ul><li>A long single-column bullet that carries most of the characters
+          on this page so that the column split has nothing to find here at all.</li>
+          <li>Another substantial bullet of ordinary single-column body text.</li></ul>
+          <p><span class=d>2020 - 2023</span><b>Manager, Other Company</b></p>
+          <ul><li>More body text, again occupying the full width of the page.</li></ul>"""
+        page = browser.new_page()
+        page.set_content(floated, wait_until="networkidle")
+        page.pdf(path="/tmp/_float.pdf", format="Letter", print_background=True)
+        expect(not style_mod.layout_from_pdf(Path("/tmp/_float.pdf").read_bytes()),
+               "right-floated dates are not mistaken for a sidebar")
+
+        print("\ntwo-column rendering:")
+        html, _ = sample({"layout": "two-column", "sidebar_side": "left",
+                          "sidebar_width": 34, "sidebar_bg": "#1F3A5F",
+                          "sidebar_sections": ["contact", "skills", "education"],
+                          "accent": "#C1662F", "accent_2": "#1F3A5F", "ink": "#222222",
+                          "font_body": "'Lato', sans-serif",
+                          "google_fonts": ["Lato:wght@400;700"]})
+        page = browser.new_page(viewport={"width": 844, "height": 900})
+        page.set_content(html, wait_until="networkidle")
+        laid = page.evaluate("""() => {
+          const s = document.querySelector('.side'), m = document.querySelector('.main');
+          const p = document.querySelector('.page');
+          if (!s || !m) return null;
+          const sb = s.getBoundingClientRect(), pb = p.getBoundingClientRect();
+          return {pct: Math.round(100 * sb.width / pb.width),
+                  bg: getComputedStyle(s).backgroundColor,
+                  ink: getComputedStyle(s.querySelector('.section-label')).color,
+                  left: sb.left < m.getBoundingClientRect().left,
+                  full: sb.height >= pb.height - 2,
+                  skills_in_side: !!s.querySelector('.skills'),
+                  experience_in_main: !!m.querySelector('.timeline')};
+        }""")
+        expect(laid is not None, "a two-column style produces a sidebar in the markup")
+        if laid:
+            expect(laid["pct"] == 34, f"the sidebar is the detected width (got {laid['pct']}%)")
+            expect(laid["bg"] == "rgb(31, 58, 95)", "in the detected colour")
+            expect(laid["ink"] == "rgb(255, 255, 255)", "with legible text on a dark panel")
+            expect(laid["left"], "on the detected side")
+            expect(laid["full"], "running the full height of the page")
+            expect(laid["skills_in_side"], "the assigned sections are in the sidebar")
+            expect(laid["experience_in_main"], "experience stays in the main column")
+
         browser.close()
 
     print()
