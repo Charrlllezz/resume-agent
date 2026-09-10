@@ -19,6 +19,16 @@
    key</a> to keep going.</p>
 {% endif %}
 
+{# An upload becomes a draft, and only becomes the master resume when the
+   review screen is submitted. Someone who clicks the wordmark from the review
+   screen leaves a draft they have already paid an ingest for, with the only
+   route back its URL in their history. Surface it here instead. #}
+{% for draft_id, d in (drafts or {}).items() %}
+<p class="banner"><strong>{{ d.filename }}</strong> is read and waiting for your
+   review — it isn't your master resume until you approve it.
+   <a href="{{ url_for('resume_review', draft_id=draft_id) }}">Finish reviewing it</a>.</p>
+{% endfor %}
+
 {% if using_sample %}
 <p class="banner">No master resume yet — running on the fictional sample.
    Upload yours below.</p>

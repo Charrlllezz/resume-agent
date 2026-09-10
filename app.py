@@ -425,6 +425,7 @@ def resume_page():
             return redirect(url_for("start_page"))
     s = current()
     return render_template("resume.html", resume=s.resume,
+                           drafts=s.drafts,
                            hosted=not sessions.single_user(),
                            using_sample=sessions.single_user()
                            and tr.MASTER_RESUME.name.endswith("example.json"),
@@ -452,6 +453,7 @@ def resume_upload():
         ingest.read_document(data, filename)
     except ValueError as e:
         return render_template("resume.html", resume=s.resume, bullets=0,
+                               drafts=s.drafts,
                                hosted=not sessions.single_user(),
                                error=str(e)), 400
 
@@ -461,6 +463,7 @@ def resume_upload():
         refusal = trial.take(s, ip, "ingest")
         if refusal:
             return render_template("resume.html", resume=s.resume, bullets=0,
+                                   drafts=s.drafts,
                                    hosted=not sessions.single_user(),
                                    offer_key=True, error=refusal), 402
 
