@@ -3,5 +3,9 @@ anthropic>=0.40.0
 # move together or Playwright cannot find its browser.
 playwright==1.62.0
 flask>=3.0.0
+# Reading a PDF's typography, colour and geometry. MIT, on MIT pdfminer.six.
+# PyMuPDF does more and is faster and is AGPL unless you buy a licence, which
+# is not an obligation to put on people who fork this.
+pdfplumber>=0.11.0
 pypdf>=4.0.0
 python-docx>=1.1.0

@@ -814,12 +814,16 @@ def style_block(spec: dict) -> str:
 
 
 def sidebar_ink(spec: dict) -> str:
-    """Text colour for the panel: white on a dark one, the body ink on a pale one.
+    """Text colour for the panel.
 
-    Derived rather than detected. Reading the text colour inside the sidebar
-    band would mean tracking x-positions through the colour parser for a value
-    that is, in practice, one of two.
+    Measured when the document says so -- the colour of the text actually
+    inside the panel's x-band. Deriving it from how dark the panel is gets
+    white-on-navy right and a two-tone panel wrong, so that is only the
+    fallback.
     """
+    measured = spec.get("sidebar_ink") or ""
+    if measured.startswith("#") and len(measured) == 7:
+        return measured
     bg = spec.get("sidebar_bg") or ""
     try:
         r, g, b = (int(bg[i:i + 2], 16) for i in (1, 3, 5))

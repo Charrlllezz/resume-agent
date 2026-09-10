@@ -285,6 +285,7 @@ expect(_seen == {"r0": 1, "r1": 2, "r2": 3, "r3": 4},
 
 print("\ningestion provenance (a draft must trace to the document it came from):")
 import ingest
+import pdfread
 
 _DOC = """Jordan Reyes
 jordan.reyes@example.com
@@ -406,6 +407,34 @@ expect(not ingest.check(_lig_draft, _LIG_DOC),
 expect("\ufb01" not in ingest.normalise(_LIG_DOC), "ligatures are folded")
 expect(ingest.normalise("soft\u00adhyphen") == "softhyphen", "soft hyphens are dropped")
 expect(ingest.normalise("curly\u2019s") == "curly's", "curly quotes are normalised")
+
+
+# Font roles used to be the model's call and it was the weakest part of the
+# feature: asked which face the section headings were in, it answered with the
+# name's face, and a resume lost one of its typefaces. Size and usage decide
+# it now, which is a fact about the page.
+_roles = style_mod.roles_from_fonts([
+    ("lato", 10.5, 316), ("robotomono", 8.5, 92),
+    ("playfairdisplay", 26.0, 11), ("playfairdisplay", 12.0, 57),
+    ("montserrat", 9.0, 29), ("montserrat", 10.0, 16)])
+expect(_roles["body"] == "lato", f"the most-used face is the body (got {_roles['body']})")
+expect(_roles["display"] == "playfairdisplay",
+       f"the largest face is the name (got {_roles['display']})")
+expect(_roles["heading"] == "montserrat",
+       f"what is left over is the headings (got {_roles['heading']})")
+expect(_roles["mono"] == "robotomono", "a monospace is found by name")
+
+_one = style_mod.roles_from_fonts([("timesnewroman", 11.0, 506),
+                                   ("timesnewroman", 20.0, 12)])
+expect(_one["body"] == _one["display"] == _one["heading"] == "timesnewroman",
+       "a one-font resume uses that font for every role")
+expect(_one["mono"] == "", "and gains no monospace it never had")
+
+expect(pdfread.clean_font("DAAAAA+Lato-Regular") == "lato",
+       "a subset prefix and a weight are not part of the family")
+expect(pdfread._hex((0.1216, 0.2275, 0.3725)) == "#1F3A5F", "rgb converts exactly")
+expect(pdfread._hex("P6") == "", "a pattern fill is skipped rather than guessed at")
+expect(pdfread._hex(0.0) == "#000000", "a bare grey value converts")
 
 
 print()

@@ -89,14 +89,27 @@ tailored resume comes out set the same way.
 
 Split the way the rest of the project splits things:
 
-- **Deterministic.** Font families come out of the PDF's own resource
-  dictionary, or a DOCX's styles. Colours come out of the content stream — the
-  fill colours text is actually painted in, weighted by how much text uses
-  each. Both are the file stating what it is, not an opinion about it.
-- **Judged.** Plain or designed, which font is the name and which is the body,
-  whether the name is centred, how tightly it is packed. That is reading a
-  picture, which is what the model is for — constrained by the embedded font
-  list so it cannot name a typeface the document does not contain.
+- **Measured.** Typography, colour and geometry, read with `pdfplumber`
+  (`pdfread.py`): per-character font family, point size, fill colour and
+  position, plus the page's filled rectangles. That gives the font *roles*
+  as well as the families — the body is the most-used face, the name is the
+  largest, the headings are what is left. It gives the exact colours, the
+  sidebar panel's position and width, the colour of the text inside it, which
+  sections sit in which column, and whether the name is centred within its own
+  column.
+- **Judged.** Two things: whether the resume reads as plain or designed, and
+  whether it is packed tight. Both are impressions of a whole page.
+
+Font roles used to be judged, and it was the weakest part of the feature:
+asked which face the section headings were in, the model answered with the
+name's face and a resume lost one of its typefaces. Colour used to be judged
+too — asked to read `#0B3C5D` and `#B85C1E`, it returned `#1b3a5c` and
+`#c05a26`, close enough to look right and wrong enough to be someone else's
+brand colour.
+
+`pdfplumber` is MIT, on MIT `pdfminer.six`. PyMuPDF does more and is faster,
+and is AGPL unless you buy a licence — not an obligation to put on people who
+fork this.
 
 Colour used to be judged too, and it was close enough to look right and wrong
 enough to matter: asked to read a resume set in `#0B3C5D`, `#B85C1E` and
