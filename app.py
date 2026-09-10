@@ -422,7 +422,17 @@ def resume_save(draft_id):
                   else draft.get("style", {})),
         "education": {k: (request.form.get(f"education.{k}") or "").strip()
                       for k in ("degree", "school", "year")},
+        # Certifications, awards, languages -- sections the schema has no field
+        # of its own for. They were being dropped entirely, which is a worse
+        # failure than any of the ones this screen exists to catch.
+        "extras": [],
     }
+    for i, extra in enumerate(draft.get("extras") or []):
+        items = [x.strip() for x in
+                 (request.form.get(f"extra.items.{i}") or "").splitlines() if x.strip()]
+        label = (request.form.get(f"extra.label.{i}") or extra.get("label") or "").strip()
+        if label and items:
+            edited["extras"].append({"label": label, "items": items})
     for i, role in enumerate(draft.get("experience", [])):
         bullets = [b.strip() for b in
                    (request.form.get(f"bullets.{i}") or "").splitlines() if b.strip()]

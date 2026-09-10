@@ -55,6 +55,15 @@
     >{{ (role.bullets.values()|list|first)|join('\n') }}</textarea>
   {% endfor %}
 
+  {% for extra in draft.extras or [] %}
+  <h2 style="margin-top:28px">{{ extra.label|title }}</h2>
+  <label>lines <span class="opt">one per line — clear them all to drop this section</span></label>
+  <input type="hidden" name="extra.label.{{ loop.index0 }}" value="{{ extra.label }}">
+  <textarea name="extra.items.{{ loop.index0 }}" rows="3" data-autosize
+    >{{ (extra['items'] or [])|join('
+') }}</textarea>
+  {% endfor %}
+
   <h2 style="margin-top:28px">Education</h2>
   <div class="pair">
     {% for f in ['degree','school','year'] %}

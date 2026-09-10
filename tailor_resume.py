@@ -842,8 +842,31 @@ def font_link(spec: dict) -> str:
             'rel="stylesheet">')
 
 
+def extras_html(resume: dict) -> list:
+    """[(key, html)] for every section the schema has no field of its own for.
+
+    Certifications, awards, languages, publications. They were being dropped
+    on the way in, which is a worse failure than any styling one: a section
+    quietly missing from a resume is not something a person notices until an
+    interviewer does.
+    """
+    out = []
+    for extra in resume.get("extras") or []:
+        label = (extra.get("label") or "").strip()
+        items = [str(i).strip() for i in (extra.get("items") or []) if str(i).strip()]
+        if not label or not items:
+            continue
+        pills = "".join(f'<span class="pill">{html_lib.escape(i)}</span>' for i in items)
+        key = re.sub(r"[^a-z]", "", label.lower())
+        out.append((key,
+                    f'<div class="section-label">{html_lib.escape(label.title())}</div>'
+                    f'<div class="skills"><div class="skill-group">'
+                    f'<div class="pills">{pills}</div></div></div>'))
+    return out
+
+
 def body_html(spec: dict, c: dict, tailored: dict, nodes_html: list,
-              skills_html: list, edu: dict) -> str:
+              skills_html: list, edu: dict, extras: list = ()) -> str:
     """The page, in one column or two.
 
     Where a resume had a sidebar it gets one back: same sections, same side,
@@ -872,9 +895,10 @@ def body_html(spec: dict, c: dict, tailored: dict, nodes_html: list,
     hero_open = f'<header class="hero"><h1>{e(c["name"])}</h1>'
     tagline = f'<div class="tagline">{e(tailored["headline"])}</div>'
 
+    tail = "".join(h for _k, h in extras)
     if spec.get("layout") != "two-column":
         return ('  <div class="page">' + hero_open + tagline + contact_inline
-                + '</header>' + experience + skills + education + '</div>')
+                + '</header>' + experience + skills + education + tail + '</div>')
 
     wanted = set(spec.get("sidebar_sections") or ["contact", "skills", "education"])
     side, main = [], []
@@ -882,6 +906,10 @@ def body_html(spec: dict, c: dict, tailored: dict, nodes_html: list,
         side.append(contact_stacked)
     (side if "skills" in wanted else main).append(skills)
     (side if "education" in wanted else main).append(education)
+    for key, block in extras:
+        # A section that was in the sidebar goes back to the sidebar.
+        (side if any(key.startswith(w) or w.startswith(key) for w in wanted)
+         else main).append(block)
     main.insert(0, experience)
 
     hero = (hero_open + tagline
@@ -954,7 +982,7 @@ def render_html(tailored: dict, resume: dict) -> str:
 </style>
 </head>
 <body>
-{body_html(spec, c, tailored, nodes_html, skills_html, edu)}
+{body_html(spec, c, tailored, nodes_html, skills_html, edu, extras_html(resume))}
 </body>
 </html>"""
 

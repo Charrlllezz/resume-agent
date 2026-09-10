@@ -437,6 +437,35 @@ expect(pdfread._hex("P6") == "", "a pattern fill is skipped rather than guessed 
 expect(pdfread._hex(0.0) == "#000000", "a bare grey value converts")
 
 
+# A resume section with nowhere to go in the schema was dropped silently on
+# the way in -- certifications, awards, languages. Content loss is a worse
+# failure than any styling one, and it is invisible until an interviewer asks.
+_EX_DOC = _LIG_DOC + "\n\nCERTIFICATIONS\nSalesforce Administrator\nMarketo Certified Expert"
+_ex = dict(_lig_draft)
+_ex["extras"] = [{"label": "CERTIFICATIONS",
+                  "items": ["Salesforce Administrator", "Marketo Certified Expert"]}]
+expect(not [i for i in ingest.check(_ex, _EX_DOC) if i.check == "traced"],
+       "certifications that are in the document pass")
+
+_ex_bad = dict(_ex)
+_ex_bad["extras"] = [{"label": "CERTIFICATIONS",
+                      "items": ["AWS Solutions Architect Professional"]}]
+expect(any(i.check == "traced" for i in ingest.check(_ex_bad, _EX_DOC)),
+       "an invented certification is caught")
+
+# Short verbatim lines need containment, not the bullet matcher: scoring
+# "Salesforce Administrator" against a pool of full sentences returned 38%.
+expect(ingest._flat("Salesforce  Administrator") in ingest._flat(_EX_DOC),
+       "a short line is matched by containment, not by similarity")
+
+_rendered = tr.render_html(
+    {"headline": "x", "experience": [], "skills": {}},
+    {**RESUME, "extras": [{"label": "Certifications",
+                           "items": ["Salesforce Administrator"]}]})
+expect("Salesforce Administrator" in _rendered,
+       "an extra section reaches the rendered resume")
+
+
 print()
 if failures:
     print(f"{len(failures)} FAILED")

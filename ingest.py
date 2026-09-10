@@ -118,7 +118,8 @@ Restructure it as JSON. You are transcribing, not writing.
     }}
   ],
   "skills": {{"{track}": {{"Group name": ["skill", "skill"]}}}},
-  "education": {{"degree": "", "school": "", "year": ""}}
+  "education": {{"degree": "", "school": "", "year": ""}},
+  "extras": [{{"label": "AS WRITTEN, e.g. Certifications", "items": ["each line, verbatim"]}}]
 }}
 
 Rules:
@@ -135,6 +136,11 @@ Rules:
   in a tailored resume: [4, 5] for recent roles, fewer for older ones.
 - Group skills the way the resume groups them. If it just lists them, use one
   group called "Skills".
+- "extras" is every OTHER section the resume has -- certifications, awards,
+  languages, publications, volunteering, projects, anything. One entry per
+  section, its heading as written, its lines verbatim. Return an empty list if
+  there are none. A section with nowhere to go was being dropped silently,
+  which is a worse failure than any of the ones this file guards against.
 
 Return ONLY the JSON object."""
 
@@ -149,6 +155,15 @@ def extract(client, document: str, track: str = "general") -> dict:
     )
     usage.record(response)
     return tr.extract_json(response)
+
+
+def _flat(text: str) -> str:
+    """Lowercased with runs of non-alphanumerics collapsed, for containment.
+
+    A PDF breaks lines and pads spacing wherever it likes; comparing the
+    squeezed forms means a wrapped line still matches.
+    """
+    return re.sub(r"[^a-z0-9]+", " ", normalise(text).lower()).strip()
 
 
 def check(draft: dict, document: str) -> list:
@@ -187,6 +202,23 @@ def check(draft: dict, document: str) -> list:
                     f"{company}: {', '.join(sorted(invented))} "
                     f"{'is' if len(invented) == 1 else 'are'} not in the document — "
                     f"{bullet[:70]}"))
+
+    # Extras are short verbatim lines -- "Salesforce Administrator", "Spanish
+    # (fluent)" -- so they are checked by containment, not by the bullet
+    # matcher. Scoring a 24-character line against a pool of full sentences
+    # returned 38% for a certification that was plainly there, which is the
+    # false positive this whole layer must not produce.
+    flat = _flat(document)
+    for extra in draft.get("extras") or []:
+        label = (extra.get("label") or "?").strip()
+        for item in extra.get("items") or []:
+            item = normalise(str(item)).strip()
+            if len(item) < 4:
+                continue
+            if _flat(item) not in flat:
+                issues.append(qa.Issue(
+                    qa.ERROR, "traced",
+                    f"{label}: not found in the document — {item[:80]}"))
 
     contact = draft.get("contact", {})
     for field in ("name", "email"):

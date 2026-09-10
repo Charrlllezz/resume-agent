@@ -203,8 +203,7 @@ def merge(base: dict, judged: dict) -> dict:
     if isinstance(sections, list):
         # Constrained to sections that exist, so a hallucinated one cannot
         # silently drop a real section out of the rendered page.
-        out["sidebar_sections"] = [x for x in sections
-                                   if x in ("contact", "skills", "education")]
+        out["sidebar_sections"] = [x for x in sections if isinstance(x, str)]
     for key in ("chrome", "accent", "accent_2", "ink", "header_align", "density"):
         value = (judged or {}).get(key)
         if isinstance(value, str) and value.strip():
@@ -412,8 +411,10 @@ def detect(client, data: bytes, filename: str, model: str) -> dict:
                     sidebar_bg=panel["colour"],
                     sidebar_ink=facts.get("sidebar_ink") or "")
         sections = facts.get("sections") or {}
-        in_side = [k for k, v in sections.items() if v == "side"
-                   and k in ("contact", "skills", "education")]
+        # Every section found in the sidebar, not only the three the schema has
+        # fields for. Certifications lived in Dana's sidebar and was filtered
+        # out here, which is half of why it vanished.
+        in_side = [k for k, v in sections.items() if v == "side"]
         spec["sidebar_sections"] = in_side or ["contact", "skills", "education"]
     else:
         spec.update(layout="single", sidebar_sections=[])

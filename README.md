@@ -70,7 +70,8 @@ tailoring means *selecting*, and it can only select from what's there.
     "bullets_expected": [4, 5]                     // how many the output should carry
   }],
   "skills":    { "gtm": { "Group name": ["..."] } },
-  "education": { "degree": "...", "school": "...", "year": "..." }
+  "education": { "degree": "...", "school": "...", "year": "..." },
+  "extras":    [{ "label": "Certifications", "items": ["..."] }]   // any other section
 }
 ```
 
@@ -166,8 +167,14 @@ document used colour, not that it used those. Rendering someone's two-column
 resume with a timeline it never had swaps their design for mine, which is the
 failure this whole section exists to prevent.
 
-**What it does not do.** Photos, graphic headers, and anything that lived only
-in a sidebar and is not contact, skills or education. Three or more columns. A fifth distinct typeface collapses into the four roles. And
+Sections the schema has no field of its own for — certifications, awards,
+languages, publications — are kept in `extras`, checked against the document
+like everything else, and rendered back into whichever column they came from.
+
+**What it does not do.** Photos, graphic headers, three or more columns. DOCX
+uploads get typography from the document's styles but none of the colour or
+layout detection, which is PDF-only. A scanned or image-only PDF has no text
+to read at all. A fifth distinct typeface collapses into the four roles. And
 which font plays which role is model judgment, so a resume that sets its name
 and its headings in two different display faces can have one of them read as
 the other; the colours will still be exact. And if
