@@ -171,10 +171,18 @@ Sections the schema has no field of its own for — certifications, awards,
 languages, publications — are kept in `extras`, checked against the document
 like everything else, and rendered back into whichever column they came from.
 
-**What it does not do.** Photos, graphic headers, three or more columns. DOCX
-uploads get typography from the document's styles but none of the colour or
-layout detection, which is PDF-only. A scanned or image-only PDF has no text
-to read at all. A fifth distinct typeface collapses into the four roles. And
+**DOCX and PDF both take the measured path.** A DOCX is the easier document to
+read, not the harder one: it stores structure rather than glyphs at
+coordinates, so the text comes out with no ligatures to undo, no columns to
+un-interleave, and dates still attached to the role they belong to. The run's
+font, size and colour, the paragraph's alignment, and Word's usual sidebar —
+a two-cell table with one cell shaded — are all stated in the file.
+`docxread.py` returns the same shape `pdfread.py` does, so everything
+downstream is identical. It is also cheaper: there is no page to look at, so
+the one visual judgment call is skipped.
+
+**What it does not do.** Photos, graphic headers, three or more columns. A
+scanned or image-only PDF has no text to read at all. A fifth distinct typeface collapses into the four roles. And
 which font plays which role is model judgment, so a resume that sets its name
 and its headings in two different display faces can have one of them read as
 the other; the colours will still be exact. And if

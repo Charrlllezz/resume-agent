@@ -19,6 +19,7 @@ Neither touches content. Style lives beside the resume, never inside a bullet.
 
 import re
 
+import docxread
 import pdfread
 
 # The default is this project's own template, used when nothing is detected.
@@ -378,11 +379,13 @@ def detect(client, data: bytes, filename: str, model: str) -> dict:
     """
     is_pdf = filename.lower().endswith(".pdf")
     facts = {}
-    if is_pdf:
-        try:
-            facts = pdfread.read(data)
-        except Exception:
-            facts = {}
+    try:
+        # A DOCX states what a PDF makes you infer, so it takes the same
+        # measured path rather than a degraded one. It was the format getting
+        # the worse result purely because none of it was being read.
+        facts = pdfread.read(data) if is_pdf else docxread.read(data)
+    except Exception:
+        facts = {}
 
     spec = dict(DEFAULTS)
     roles = roles_from_fonts(facts.get("fonts") or [])
@@ -395,11 +398,6 @@ def detect(client, data: bytes, filename: str, model: str) -> dict:
                     font_heading=heading, font_mono=mono or body,
                     google_fonts=list(dict.fromkeys(
                         g for g in (gf_body, gf_display, gf_heading, gf_mono) if g)))
-    elif not is_pdf:
-        try:
-            spec = from_fonts(fonts_from_docx(data))
-        except Exception:
-            pass
 
     spec.update(_ink_and_accents(facts.get("colours") or []))
 
@@ -421,6 +419,15 @@ def detect(client, data: bytes, filename: str, model: str) -> dict:
 
     if facts.get("title_align"):
         spec["header_align"] = facts["title_align"]
+
+    if not is_pdf:
+        # describe() looks at a rendered page and there is nothing to render
+        # here. Plain-versus-designed is the one thing it decides that can be
+        # inferred: a resume with no colour and no panel is a plain one.
+        spec["chrome"] = ("designed"
+                          if (panel or spec.get("accent", "#000000") != "#000000")
+                          else "plain")
+        return merge(spec, {})
 
     try:
         judged = describe(client, data, filename, model)

@@ -466,6 +466,83 @@ expect("Salesforce Administrator" in _rendered,
        "an extra section reaches the rendered resume")
 
 
+print("\nDOCX is read, not guessed at:")
+import io as _io
+
+import docxread
+from docx import Document as _Doc
+from docx.oxml import OxmlElement as _El
+from docx.oxml.ns import qn as _qn
+from docx.shared import Pt as _Pt, RGBColor as _RGB
+from docx.enum.text import WD_ALIGN_PARAGRAPH as _ALIGN
+
+
+def _docx_bytes(build):
+    d = _Doc()
+    d.styles["Normal"].font.name = "Calibri"
+    d.styles["Normal"].font.size = _Pt(10.5)
+    build(d)
+    buf = _io.BytesIO()
+    d.save(buf)
+    return buf.getvalue()
+
+
+def _plain(d):
+    p = d.add_paragraph()
+    p.alignment = _ALIGN.CENTER
+    r = p.add_run("Sam Okafor")
+    r.font.size = _Pt(22)
+    r.font.name = "Cambria"
+    r.font.color.rgb = _RGB(0x1B, 0x4D, 0x3E)
+    d.add_paragraph("Ran technical discovery for sixty enterprise prospects "
+                    "and contributed to eight million in closed-won revenue.")
+
+
+_facts = docxread.read(_docx_bytes(_plain))
+_roles = style_mod.roles_from_fonts(_facts["fonts"])
+expect(_roles["body"] == "calibri", f"the body font is read (got {_roles['body']})")
+expect(_roles["display"] == "cambria", f"the name's font is read (got {_roles['display']})")
+expect(style_mod._ink_and_accents(_facts["colours"])["accent"] == "#1B4D3E",
+       "the accent colour is exact, from the run's own value")
+expect(_facts["title_align"] == "center", "a centred name is read from the paragraph")
+expect(_facts["panel"] is None, "a single-column document has no panel")
+
+
+def _sidebar(d):
+    t = d.add_table(rows=1, cols=2)
+    side, main = t.rows[0].cells
+    shd = _El("w:shd")
+    shd.set(_qn("w:val"), "clear")
+    shd.set(_qn("w:fill"), "2F4858")
+    side._tc.get_or_add_tcPr().append(shd)
+    for cell, w in ((side, 2300), (main, 4200)):
+        tcw = _El("w:tcW")
+        tcw.set(_qn("w:w"), str(w))
+        tcw.set(_qn("w:type"), "dxa")
+        cell._tc.get_or_add_tcPr().append(tcw)
+    for text in ("CONTACT", "SKILLS", "CERTIFICATIONS"):
+        r = side.add_paragraph().add_run(text)
+        r.font.color.rgb = _RGB(0xFF, 0xFF, 0xFF)
+    main.add_paragraph().add_run("EXPERIENCE")
+
+
+_facts = docxread.read(_docx_bytes(_sidebar))
+expect(_facts["panel"] is not None, "a shaded table cell is recognised as a sidebar")
+if _facts["panel"]:
+    expect(_facts["panel"]["colour"] == "#2F4858", "in its exact colour")
+    expect(_facts["panel"]["side"] == "left", "on the correct side")
+expect(_facts["sidebar_ink"] == "#FFFFFF",
+       f"the panel's text colour is measured (got {_facts['sidebar_ink']})")
+expect(_facts["sections"].get("certifications") == "side",
+       "sections are placed by which cell they are in")
+expect(_facts["sections"].get("experience") is None
+       or _facts["sections"]["experience"] == "main", "and the main column is not the sidebar")
+
+# Word inherits colour from the style when a run does not set one. Counting
+# that as unknown threw away most of the page.
+expect(any(c == "#000000" for c, _n in _facts["colours"]),
+       "an unset colour resolves to the document default, not to nothing")
+
 print()
 if failures:
     print(f"{len(failures)} FAILED")
