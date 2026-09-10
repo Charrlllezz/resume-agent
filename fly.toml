@@ -15,10 +15,12 @@ primary_region = "sjc"
   force_https = true
   auto_stop_machines = "stop"
   auto_start_machines = true
-  # Sessions live in the machine's memory, so stopping one signs out everybody
-  # on it. Keeping one warm means that only happens when traffic is genuinely
-  # zero, and a cold start is a slow first request rather than a lost session.
-  min_machines_running = 1
+  # Scale to zero. Fly bills stopped machines for their rootfs only (cents a
+  # month), so an idle deployment is effectively free -- but sessions live in
+  # the machine's memory, so a stop signs out whoever was on it. That is the
+  # trade: an idle user re-enters their API key, and nobody pays for a warm
+  # machine nobody is using. Set this to 1 to keep one warm (~$5.70/month).
+  min_machines_running = 0
 
   [http_service.concurrency]
     type = "requests"
