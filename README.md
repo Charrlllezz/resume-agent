@@ -265,7 +265,48 @@ Anthropic API key**, and their resume lives in their session. Set by
 
 **Never put `ANTHROPIC_API_KEY` in the server's environment.** Hosted mode
 takes a key per session; a key sitting in the process environment is one the
-SDK can fall back to, which would mean strangers spending your money.
+SDK can fall back to, which would mean strangers spending your money. Hosted
+mode now refuses to start if it finds one, because that mistake is silent and
+expensive rather than loud.
+
+### Offering a free trial
+
+Asking a stranger for an API key before showing them anything is a wall most
+people won't climb. `trial.py` lets them run it a few times on your key first.
+
+```bash
+fly secrets set RESUME_AGENT_DEMO_KEY=sk-ant-...      # NOT ANTHROPIC_API_KEY
+fly secrets set TRIAL_ADMIN_TOKEN=$(python -c "import secrets;print(secrets.token_hex(16))")
+```
+
+**Put a spend limit on the Anthropic workspace that key belongs to.** That is
+the real ceiling: it is enforced by Anthropic's billing, and unlike everything
+in `trial.py` it cannot have a bug in it. Everything below is the second line
+of defence.
+
+| Variable | Default | What it bounds |
+|---|---|---|
+| `RESUME_AGENT_DEMO_KEY` | unset (no trial) | The key trial runs are billed to |
+| `FREE_RUNS_PER_SESSION` | 3 | Tailoring runs before it asks for a key |
+| `FREE_INGESTS_PER_SESSION` | 3 | Resume uploads per session |
+| `FREE_ACTIONS_PER_IP` | 8 | Per address per day — stops new sessions resetting the count |
+| `TRIAL_DAILY_BUDGET` | 5.00 | Dollars a day across everyone |
+| `TRIAL_ADMIN_TOKEN` | unset | Enables `GET /admin/trial?token=…` |
+
+The name matters: `RESUME_AGENT_DEMO_KEY` is not a variable the SDK reads, so
+nothing can pick it up by accident. Every use goes through `trial.py`, which
+**reserves budget before the work and settles afterwards** — otherwise eight
+simultaneous runs all read the same healthy balance and all eight proceed.
+
+The ledger is written to `.state/trial.json` because Fly stops an idle machine
+and starts it again on the next request; in memory, the day's budget would
+reset whenever the site went quiet, which is to say on demand. It holds counts,
+salted address hashes and dollars — no keys, no resumes, no raw addresses.
+
+Run `python test_trial.py` after touching any of this. It is offline, and it
+tests the refusals rather than the happy path: the budget ceiling under eight
+concurrent requests, a new session from an address that has used its quota, a
+restart mid-run, the day rolling over, and a failing run still costing money.
 
 What is and isn't kept:
 
@@ -275,6 +316,7 @@ What is and isn't kept:
 | Resume | In memory, for the session. Never written to disk. |
 | Cookie | An opaque session id. It is signed but **not encrypted**, which is exactly why nothing else is in it. |
 | Idle sessions | Dropped after two hours, taking the key with them. |
+| Trial ledger | Counts, dollars and salted address hashes, on disk. No keys, no resumes, no raw addresses. |
 
 Three constraints are load-bearing, and all three are commented where they
 live:
@@ -307,6 +349,7 @@ primitive pointed at cloud metadata.
 | `resolve_urls.py saved.tsv` | Turn a list of company + title into real posting URLs. Writes `*_candidates.tsv` for roles that may be posted under another name. |
 | `roles.py` | Role families: is a differently-worded title the same job? Imported, not run. |
 | `test_qa.py` | The test suite: QA, provenance, token accounting. Free and offline. Run it after changing `qa.py` or the prompts. |
+| `test_trial.py` | What the free trial must refuse: budgets, quotas, races, restarts. Free and offline. Run it after changing `trial.py` or the run gates in `app.py`. |
 | `test_fit.py` | An eval for whether the fit assessment still discriminates. Calls the model, so it costs about $0.07 a run. |
 | `test_render.py` | Asserts computed style on a rendered page. Free and offline, but it needs a browser. Run it after touching `RESUME_CSS`, `PLAIN_CSS` or `style.py`. |
 

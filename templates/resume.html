@@ -10,6 +10,11 @@
 
 {% if error %}<p class="banner bad">{{ error }}</p>{% endif %}
 
+{% if offer_key %}
+<p class="banner"><a href="{{ url_for('start_page') }}">Add your own Anthropic
+   key</a> to keep going.</p>
+{% endif %}
+
 {% if using_sample %}
 <p class="banner">No master resume yet — running on the fictional sample.
    Upload yours below.</p>

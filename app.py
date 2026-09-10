@@ -31,6 +31,8 @@ import pipeline
 import qa
 import sessions
 import tailor_resume as tr
+import trial
+import usage
 
 app = Flask(__name__)
 
@@ -118,6 +120,25 @@ def bootstrap_local():
     return s
 
 
+def refuse_ambient_key():
+    """Hosted, ANTHROPIC_API_KEY in the environment is a standing invitation.
+
+    The SDK reads that variable by itself. A hosted process holding it would
+    bill the host for any call that reached the SDK without an explicit key --
+    no trial accounting, no session, no limit, and no error to notice. The
+    trial key is deliberately named something the SDK will never pick up, and
+    this makes the mistake loud instead of expensive.
+    """
+    if not sessions.single_user() and os.environ.get("ANTHROPIC_API_KEY"):
+        raise RuntimeError(
+            "ANTHROPIC_API_KEY is set in a hosted deployment. The SDK falls "
+            "back to it, so any code path that forgot to pass a key would "
+            "spend it silently, for anyone. Unset it. To offer a free trial, "
+            "use RESUME_AGENT_DEMO_KEY, which the SDK cannot pick up on its "
+            "own and which trial.py meters.")
+
+
+refuse_ambient_key()
 LOCAL_SESSION = bootstrap_local() if sessions.single_user() else None
 
 
@@ -142,10 +163,20 @@ class Job:
     events: list = field(default_factory=list)
     result: object = None
     error: str = ""
+    # True once the run has reached the model. A trial credit is only kept for
+    # work that actually cost the host something -- a URL that does not
+    # resolve fails before the first call, and charging a free run for a typo
+    # teaches people the trial is broken.
+    billable: bool = False
     started: str = field(default_factory=lambda: datetime.now().isoformat(timespec="seconds"))
 
     def note(self, stage: str, message: str):
-        self.stage = stage
+        # 'warn' is an aside, not a step: letting it overwrite the stage would
+        # lose track of how far the run actually got.
+        if stage != "warn":
+            self.stage = stage
+        if stage == "analyze":
+            self.billable = True
         if message:
             self.events.append({"stage": stage, "message": message})
 
@@ -165,7 +196,8 @@ def _job(job_id: str) -> Job:
     return job
 
 
-def _run_job(s: sessions.Session, job: Job, url: str, text: str):
+def _run_job(s: sessions.Session, job: Job, url: str, text: str, ip: str = ""):
+    """Run one job. `ip` is non-empty only when a trial credit is being held."""
     try:
         job.status = "queued"
         # Waits for a slot rather than launching a browser regardless. A few
@@ -173,16 +205,25 @@ def _run_job(s: sessions.Session, job: Job, url: str, text: str):
         with sessions.RUN_SLOTS:
             job.status = "running"
             job.result = pipeline.run(
-                resume=s.resume, client=tr.make_client(s.api_key),
+                resume=s.resume, client=tr.make_client(s.key),
                 url=url, text=text, company=job.company,
                 progress=lambda stage, message, result: job.note(stage, message),
             )
         job.company = job.result.company or job.company
         job.status = "done"
+        if ip:
+            trial.LEDGER.settle("run", job.result.cost)
     except Exception as e:
         job.status = "error"
         job.error = friendly_error(e)
         traceback.print_exc()
+        if ip:
+            # The tokens are gone with the exception, so a run that reached the
+            # model is charged the estimate. Anything else is given back.
+            if job.billable:
+                trial.LEDGER.settle("run", None)
+            else:
+                trial.give_back(s, ip, "run")
 
 
 # ---------------------------------------------------------------------------
@@ -193,7 +234,10 @@ def _run_job(s: sessions.Session, job: Job, url: str, text: str):
 def start_page():
     if sessions.single_user():
         return redirect(url_for("index"))
-    return render_template("start.html", s=getattr(g, "session", None))
+    return render_template("start.html", s=getattr(g, "session", None),
+                           trial_on=trial.enabled(),
+                           free_runs=trial.FREE_RUNS_PER_SESSION,
+                           error=request.args.get("error", ""))
 
 
 @app.post("/start")
@@ -201,15 +245,32 @@ def start_submit():
     if sessions.single_user():
         return redirect(url_for("index"))
     s = getattr(g, "session", None) or new_session()
+
+    def again(message):
+        return render_template("start.html", s=s, error=message,
+                               trial_on=trial.enabled(),
+                               free_runs=trial.FREE_RUNS_PER_SESSION)
+
     key = (request.form.get("api_key") or "").strip()
     if key:
         if not key.startswith("sk-"):
-            return render_template("start.html", s=s,
-                                   error="That doesn't look like an Anthropic API "
-                                         "key — they begin with sk-.")
+            return again("That doesn't look like an Anthropic API key — they "
+                         "begin with sk-.")
         s.api_key = key
-    if not s.api_key:
-        return render_template("start.html", s=s, error="An API key is needed to run.")
+        # Their key now pays for everything, so stop drawing on the trial --
+        # including for someone who started free and is topping up mid-session.
+        s.on_trial = False
+    elif request.form.get("mode") == "trial":
+        if not trial.enabled():
+            return again("The free trial isn't available right now. An API key "
+                         "will still work.")
+        if trial.LEDGER.remaining() <= 0:
+            return again("The free trial has used up today's budget. An API key "
+                         "will still work — it resets at midnight UTC.")
+        s.on_trial = True
+
+    if not s.key:
+        return again("An API key is needed to run.")
     return redirect(url_for("resume_page"))
 
 
@@ -226,7 +287,7 @@ def needs_setup():
     if sessions.single_user():
         return None
     s = getattr(g, "session", None)
-    if not s or not s.api_key:
+    if not s or not s.key:
         return redirect(url_for("start_page"))
     if not s.resume:
         return redirect(url_for("resume_page"))
@@ -237,19 +298,33 @@ def needs_setup():
 # Tailoring
 # ---------------------------------------------------------------------------
 
+def _index(s: sessions.Session, error: str = "", offer_key: bool = False):
+    """Re-render the form with a message on it.
+
+    Every refusal path lands here. Assembling this at each call site is how one
+    of them ended up passing roles=[] and tracks=[], which emptied the page the
+    person was being sent back to.
+    """
+    return render_template(
+        "index.html",
+        name=(s.resume or {}).get("contact", {}).get("name", ""),
+        roles=[r["company"] for r in (s.resume or {}).get("experience", [])],
+        tracks=tr.tracks_for(s.resume) if s.resume else [],
+        hosted=not sessions.single_user(),
+        on_trial=s.on_trial and not s.own_key,
+        runs_left=trial.left(s, "run") if s.on_trial and not s.own_key else None,
+        offer_key=offer_key,
+        using_sample=sessions.single_user()
+        and tr.MASTER_RESUME.name.endswith("example.json"),
+        error=error)
+
+
 @app.get("/")
 def index():
     detour = needs_setup()
     if detour:
         return detour
-    s = current()
-    return render_template("index.html",
-                           name=s.resume["contact"].get("name", ""),
-                           roles=[r["company"] for r in s.resume["experience"]],
-                           tracks=tr.tracks_for(s.resume),
-                           hosted=not sessions.single_user(),
-                           using_sample=sessions.single_user()
-                           and tr.MASTER_RESUME.name.endswith("example.json"))
+    return _index(current())
 
 
 @app.post("/run")
@@ -259,11 +334,9 @@ def start():
         return detour
     s = current()
     if s.runs_started >= sessions.MAX_RUNS_PER_SESSION:
-        return render_template("index.html", name=s.resume["contact"].get("name", ""),
-                               roles=[], tracks=[], hosted=not sessions.single_user(),
-                               error=f"That's {sessions.MAX_RUNS_PER_SESSION} runs this "
-                                     "session, which is the cap. Sign out and back in "
-                                     "to reset it.")
+        return _index(s, f"That's {sessions.MAX_RUNS_PER_SESSION} runs this "
+                         "session, which is the cap. Sign out and back in to "
+                         "reset it.")
 
     url = (request.form.get("url") or "").strip()
     text = (request.form.get("text") or "").strip()
@@ -278,16 +351,24 @@ def start():
     if url and not sessions.single_user():
         refusal = sessions.safe_url(url)
         if refusal:
-            return render_template(
-                "index.html", name=s.resume["contact"].get("name", ""),
-                roles=[r["company"] for r in s.resume["experience"]],
-                tracks=tr.tracks_for(s.resume), error=refusal)
+            return _index(s, refusal)
+
+    # Claimed after the URL is known to be worth fetching, so a refused address
+    # or an empty form never costs a free run. Nothing below here can fail
+    # before the thread starts.
+    ip = ""
+    if s.on_trial and not s.own_key:
+        ip = trial.client_ip(request)
+        refusal = trial.take(s, ip, "run")
+        if refusal:
+            return _index(s, refusal, offer_key=True)
 
     job = Job(id=secrets.token_urlsafe(8), url=url,
               company=(request.form.get("company") or "").strip())
     remember(s, job)
     s.runs_started += 1
-    threading.Thread(target=_run_job, args=(s, job, url, text), daemon=True).start()
+    threading.Thread(target=_run_job, args=(s, job, url, text, ip),
+                     daemon=True).start()
     return redirect(url_for("job_page", job_id=job.id))
 
 
@@ -340,7 +421,7 @@ def job_pdf(job_id):
 def resume_page():
     if not sessions.single_user():
         s = getattr(g, "session", None)
-        if not s or not s.api_key:
+        if not s or not s.key:
             return redirect(url_for("start_page"))
     s = current()
     return render_template("resume.html", resume=s.resume,
@@ -364,17 +445,41 @@ def resume_upload():
     filename = upload.filename
     track = (request.form.get("track") or "").strip() or "general"
 
+    # Checked before anything is charged: a file we cannot read costs nothing
+    # to refuse, and refusing it here means an unsupported format never eats a
+    # free upload. ingest() reads it again, which is milliseconds.
+    try:
+        ingest.read_document(data, filename)
+    except ValueError as e:
+        return render_template("resume.html", resume=s.resume, bullets=0,
+                               hosted=not sessions.single_user(),
+                               error=str(e)), 400
+
+    ip = ""
+    if s.on_trial and not s.own_key:
+        ip = trial.client_ip(request)
+        refusal = trial.take(s, ip, "ingest")
+        if refusal:
+            return render_template("resume.html", resume=s.resume, bullets=0,
+                                   hosted=not sessions.single_user(),
+                                   offer_key=True, error=refusal), 402
+
     draft_id = secrets.token_urlsafe(8)
     job = Job(id=draft_id)
     remember(s, job)
 
     def work():
+        # Held outside the scope so the failure path can still settle on what
+        # was really spent: an ingest that dies after the model call did cost
+        # the host money, and the tokens are known either way.
+        totals = usage.new()
         try:
             job.status = "running"
             job.note("analyze", "Reading the document")
-            with sessions.RUN_SLOTS:
+            with sessions.RUN_SLOTS, usage.scope() as acc:
+                totals = acc
                 draft, document, issues = ingest.ingest(
-                    tr.make_client(s.api_key), data, filename, track=track)
+                    tr.make_client(s.key), data, filename, track=track)
             s.drafts[draft_id] = {"draft": draft, "document": document,
                                   "issues": issues, "filename": filename}
             job.status = "done"
@@ -382,6 +487,9 @@ def resume_upload():
             job.status = "error"
             job.error = friendly_error(e)
             traceback.print_exc()
+        finally:
+            if ip:
+                trial.LEDGER.settle("ingest", usage.cost(totals))
 
     threading.Thread(target=work, daemon=True).start()
     return redirect(url_for("resume_review", draft_id=draft_id))
@@ -479,8 +587,26 @@ def template_globals():
 
 @app.get("/healthz")
 def healthz():
+    # Deliberately says whether a trial is offered but not how much of it is
+    # left. A public countdown to "the budget is nearly gone" is a countdown
+    # somebody can plan around.
     return jsonify(ok=True, hosted=not sessions.single_user(),
-                   sessions=sessions.STORE.count())
+                   sessions=sessions.STORE.count(), trial=trial.enabled())
+
+
+@app.get("/admin/trial")
+def admin_trial():
+    """Today's trial spending. Gated on a token, off unless one is set.
+
+    This is how the host answers 'what is this costing me' without reading
+    logs. It is the only place the ledger is exposed, and it exposes counts
+    and dollars -- no addresses, no sessions, no resumes.
+    """
+    want = os.environ.get("TRIAL_ADMIN_TOKEN", "")
+    got = request.args.get("token", "")
+    if not want or not secrets.compare_digest(want, got):
+        abort(404)
+    return jsonify(trial.LEDGER.snapshot())
 
 
 @app.errorhandler(401)

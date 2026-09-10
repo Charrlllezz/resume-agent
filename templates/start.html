@@ -2,18 +2,33 @@
 {% block title %}Start · resume-agent{% endblock %}
 {% block body %}
 <section class="hero">
-  <h1>Bring your own key</h1>
-  <p class="sub">This runs on your Anthropic account, not mine. A tailored
-     resume costs roughly 20–30 cents in tokens.</p>
+  <h1>{% if trial_on %}Try it, then bring your own key{% else %}Bring your own key{% endif %}</h1>
+  <p class="sub">{% if trial_on %}The first {{ free_runs }} runs are on the house.
+     After that it runs on your own Anthropic account — about 20¢ a resume.
+     {% else %}This runs on your Anthropic account, not mine. A tailored
+     resume costs roughly 20–30 cents in tokens.{% endif %}</p>
 </section>
 
 {% if error %}<p class="banner bad">{{ error }}</p>{% endif %}
 
+{% if trial_on %}
 <form method="post" class="card">
-  <label for="api_key">Anthropic API key</label>
+  <input type="hidden" name="mode" value="trial">
+  <h2 style="margin-top:0">Free trial</h2>
+  <p>{{ free_runs }} tailored resumes, no key, no account. Upload your resume
+     and paste a posting URL.</p>
+  <button type="submit">Start free</button>
+  <p class="hint">Shared daily budget, so it can run out — an API key always
+     works.</p>
+</form>
+{% endif %}
+
+<form method="post" class="card">
+  <label for="api_key">{% if trial_on %}Or use your own Anthropic API key{% else %}Anthropic API key{% endif %}</label>
   <input id="api_key" name="api_key" type="password" autocomplete="off"
-         spellcheck="false" placeholder="sk-ant-…" required autofocus>
-  <p class="hint">From <code>console.anthropic.com</code> → API keys.</p>
+         spellcheck="false" placeholder="sk-ant-…" {% if not trial_on %}required autofocus{% endif %}>
+  <p class="hint">From <code>console.anthropic.com</code> → API keys.
+     No trial limits, and you see exactly what it costs.</p>
   <button type="submit">Continue</button>
 </form>
 

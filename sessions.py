@@ -20,6 +20,8 @@ import threading
 import time
 from dataclasses import dataclass, field
 
+import trial
+
 # Idle sessions are dropped, which also drops the key they were holding.
 TTL_SECONDS = 2 * 60 * 60
 SWEEP_EVERY = 5 * 60
@@ -52,11 +54,33 @@ class Session:
     jobs: dict = field(default_factory=dict)
     drafts: dict = field(default_factory=dict)
     runs_started: int = 0
+    # Trial state. `on_trial` means this visitor chose to run on the host's
+    # key; `trial_used` counts what they have spent of it, per action.
+    on_trial: bool = False
+    trial_used: dict = field(default_factory=dict)
     last_seen: float = field(default_factory=time.time)
 
     @property
+    def key(self) -> str:
+        """The key this session's calls should use.
+
+        Their own always wins, so someone who adds a key mid-trial stops
+        spending the host's money from that moment. The demo key is only ever
+        reached through a session that opted into the trial -- there is no
+        path where a request picks it up by default, which is the entire
+        reason it is not named ANTHROPIC_API_KEY.
+        """
+        if self.api_key:
+            return self.api_key
+        return trial.demo_key() if self.on_trial else ""
+
+    @property
+    def own_key(self) -> bool:
+        return bool(self.api_key)
+
+    @property
     def ready(self) -> bool:
-        return bool(self.api_key) and bool(self.resume)
+        return bool(self.key) and bool(self.resume)
 
     def touch(self):
         self.last_seen = time.time()

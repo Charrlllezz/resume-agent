@@ -23,6 +23,10 @@ rank_cache.json
 compare_cache.json
 compare_results.json
 
+# Runtime state: the trial ledger. Counts and dollars, no keys and no
+# resumes -- but it is this deployment's, not the project's.
+.state/
+
 __pycache__/
 .venv/
 .env

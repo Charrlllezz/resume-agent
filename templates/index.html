@@ -9,6 +9,15 @@
 
 {% if error %}<p class="banner bad">{{ error }}</p>{% endif %}
 
+{% if offer_key %}
+<p class="banner"><a href="{{ url_for('start_page') }}">Add your own Anthropic
+   key</a> to keep going — it takes a minute and there's no cap.</p>
+{% elif on_trial %}
+<p class="banner">Free trial: <strong>{{ runs_left }}</strong>
+   {{ 'run' if runs_left == 1 else 'runs' }} left.
+   <a href="{{ url_for('start_page') }}">Add your own key</a> for unlimited.</p>
+{% endif %}
+
 {% if using_sample %}
 <p class="banner">
   Running on <code>master_resume.example.json</code> — a fictional person.
