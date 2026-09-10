@@ -10,6 +10,12 @@ primary_region = "sjc"
   # a time fits comfortably in 1GB; raise this only with the memory to match.
   MAX_CONCURRENT_RUNS = "2"
 
+  # One honest session is 4 actions: one resume upload plus three runs. Six
+  # leaves room for a first-timer who uploads the wrong file, while making an
+  # incognito reset of the per-session counter buy almost nothing -- the
+  # session limit is a cookie, so this is the cap that actually binds.
+  FREE_ACTIONS_PER_IP = "6"
+
 [http_service]
   internal_port = 8080
   force_https = true
