@@ -2,6 +2,10 @@
 {% block title %}Master resume · resume-agent{% endblock %}
 {% block topright %}<a class="btn" href="{{ url_for('index') }}">Tailor a posting</a>{% endblock %}
 {% block body %}
+{# One resume is the finished state, not a step on the way to several. Once one
+   is loaded this page leads with the way forward and demotes the upload form to
+   a replacement; leading with the form read as a demand for a second file. #}
+{% set loaded = resume and not using_sample %}
 <section class="hero">
   <h1>Your master resume</h1>
   <p class="sub">Everything the tailoring picks from, and the file every claim
@@ -32,9 +36,23 @@
 </section>
 {% endif %}
 
+{% if loaded %}
+<section class="card">
+  <h2>Ready to tailor</h2>
+  <p class="sub">One resume is all this needs. Paste a job posting and it will
+     pick from the work above, then check every claim back against it.</p>
+  <div class="actions">
+    <a class="btn primary" href="{{ url_for('index') }}">Tailor a posting</a>
+  </div>
+</section>
+
+<details{% if error %} open{% endif %}>
+  <summary>Use a different resume instead</summary>
+{% endif %}
+
 <form method="post" action="{{ url_for('resume_upload') }}"
       enctype="multipart/form-data" class="card">
-  <label for="file">Upload a resume</label>
+  <label for="file">{{ "Upload a different resume" if loaded else "Upload a resume" }}</label>
   <input id="file" name="file" type="file" accept=".pdf,.docx,.txt,.md,.markdown" required>
   <p class="hint">PDF, DOCX, or plain text, up to 8MB. Not <code>.doc</code>,
      <code>.rtf</code> or Pages — open those and export a PDF first. A scanned
@@ -45,9 +63,16 @@
   <p class="hint">Tracks let one resume hold several framings of the same work.
      One is fine; you can add more by hand later.</p>
 
+  {% if loaded %}
+  <p class="hint">This replaces what's loaded now. On the trial it also costs
+     one of your free uploads.</p>
+  {% endif %}
   <button type="submit">Read it</button>
 </form>
 
+{% if loaded %}
+</details>
+{% else %}
 <section class="card">
   <h2>What happens next</h2>
   <p>The document is <strong>transcribed</strong> into structure — not rewritten.
@@ -60,4 +85,5 @@
      comparing it to this file, so if a model wrote it unsupervised the
      fabrication check would be marking a machine's homework.</p>
 </section>
+{% endif %}
 {% endblock %}
