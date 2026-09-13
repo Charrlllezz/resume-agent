@@ -9,6 +9,10 @@ you scaled a team to 60 engineers. This one traces every bullet, metric, skill,
 title, and date in the output back to a file you wrote by hand, and refuses to
 ship a claim it can't find a source for.
 
+**Live demo:** [charles-resume-agent.fly.dev](https://charles-resume-agent.fly.dev) — upload
+a resume, paste a posting, and read the QA report. A few free runs are metered
+on the demo key; after that it asks for your own.
+
 ```
 master_resume.json  ──▶  tailor  ──▶  QA (deterministic)  ──▶  PDF
    (you write this)        │              │
@@ -19,7 +23,7 @@ master_resume.json  ──▶  tailor  ──▶  QA (deterministic)  ──▶ 
 ## Quick start
 
 ```bash
-git clone <this repo> && cd resume-agent
+git clone https://github.com/Charrlllezz/resume-agent.git && cd resume-agent
 python -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/playwright install chromium
 echo "ANTHROPIC_API_KEY=sk-..." > .env
@@ -103,10 +107,7 @@ Split the way the rest of the project splits things:
 
 Font roles used to be judged, and it was the weakest part of the feature:
 asked which face the section headings were in, the model answered with the
-name's face and a resume lost one of its typefaces. Colour used to be judged
-too — asked to read `#0B3C5D` and `#B85C1E`, it returned `#1b3a5c` and
-`#c05a26`, close enough to look right and wrong enough to be someone else's
-brand colour.
+name's face and a resume lost one of its typefaces.
 
 `pdfplumber` is MIT, on MIT `pdfminer.six`. PyMuPDF does more and is faster,
 and is AGPL unless you buy a licence — not an obligation to put on people who
