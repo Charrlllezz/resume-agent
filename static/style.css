@@ -115,21 +115,20 @@ summary { cursor: pointer; color: var(--ink); font: 700 .87rem var(--font-body);
   background: var(--panel); color: var(--ink);
   font: 700 .92rem/1 var(--font-body); cursor: pointer; text-decoration: none;
   box-shadow: 4px 4px 0 0 var(--shadow-c);
-  margin: var(--sp-group) 0 var(--sp-tight);
+  margin: var(--sp-tight) 0;
   transition: transform .2s cubic-bezier(.34,1.56,.64,1), box-shadow .2s cubic-bezier(.34,1.56,.64,1),
               background-color .15s ease;
 }
 /* inline-flex, not block -- it doesn't margin-collapse with the text above
    or below it the way a paragraph would, so both sides need their own
-   margin or the side with none sits flush against its neighbour.
-   Asymmetric on purpose: a button is a decision, so it gets real separation
-   (group) from whatever you were reading before it; a caption right after
-   one (a trial-budget note, a "writes master_resume.json" aside) is bound
-   to the button the same way a hint is bound to its input, so it stays
-   close (tight) instead of reading as its own new paragraph. The margin is
-   for a button ending a stacked form; it fought the buttons that share a
-   row instead (.actions, .save-bar, the rail, the header nav), which already
-   space themselves with their own gap/flex. */
+   margin or the side with none sits flush against its neighbour. Close on
+   both sides (tight): a button reads as the direct next step after the
+   sentence right above it, not a separate thing waiting at a distance -- the
+   card's own padding is what separates one field group from the next, not
+   extra air stacked on top of it. The margin is for a button ending a
+   stacked form; it fought the buttons that share a row instead (.actions,
+   .save-bar, the rail, the header nav), which already space themselves with
+   their own gap/flex. */
 .actions .btn, .actions button,
 .save-bar .btn, .save-bar button,
 .rail .btn, .rail button,
