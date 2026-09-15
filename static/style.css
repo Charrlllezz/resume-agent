@@ -117,6 +117,11 @@ summary { cursor: pointer; color: var(--ink); font: 700 .87rem var(--font-body);
 .rail .btn, .rail button,
 .nav .btn, .nav button,
 .top .btn, .top button { margin: 0; }
+/* And when a button ends a card, its margin-bottom was stacking on top of
+   the card's own padding -- roughly double the gap below it as above it.
+   The card's padding is already the edge space; the button doesn't need to
+   add more of its own against a boundary. */
+.card > .btn:last-child, .card > button:last-child { margin-bottom: 0; }
 .btn:hover, button:hover { transform: translate(-2px, -2px); box-shadow: 6px 6px 0 0 var(--shadow-c); }
 .btn:active, button:active { transform: translate(1px, 1px); box-shadow: 2px 2px 0 0 var(--shadow-c); }
 .btn-primary, button.btn-primary {
