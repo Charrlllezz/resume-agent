@@ -2,31 +2,14 @@
 {% block title %}Start · resume-agent{% endblock %}
 {% block body %}
 <section class="hero">
-  <h1>Tailor a resume to a posting, and check it isn't lying</h1>
-  <p class="sub">Paste a job posting. It reads the role, judges whether your
-     experience actually fits it, then selects and orders bullets from your
-     resume to argue the case — and prints a one-page PDF set in your resume's
-     own fonts and colors, not a house template.</p>
+  <h1>Tailor a resume to a job post and get a fit score too</h1>
+  <p class="sub">
+    {% if trial_on %}The first {{ free_runs }} runs are on the house.
+    After that it runs on your own Anthropic account — about 20¢ a resume.
+    {% else %}This runs on your Anthropic account, not mine. A tailored
+    resume costs roughly 20–30 cents in tokens.{% endif %}
+  </p>
 </section>
-
-<section class="card">
-  <h2>The part other "AI resume builders" skip</h2>
-  <p>Every one of those will happily write that you scaled a team to 60
-     engineers. This one checks its own work: every bullet, metric, skill,
-     title and date in the output is traced back to a file you wrote by hand.
-     A claim it can't find a source for doesn't ship.</p>
-  <pre class="doc">master_resume.json  ──▶  tailor  ──▶  QA (deterministic)  ──▶  PDF
-   (you write this)        │              │
-                       job posting     rejects anything
-                                       not traceable to source</pre>
-</section>
-
-<p class="sub" style="margin-top:var(--sp-section)">
-  {% if trial_on %}The first {{ free_runs }} runs are on the house.
-  After that it runs on your own Anthropic account — about 20¢ a resume.
-  {% else %}This runs on your Anthropic account, not mine. A tailored
-  resume costs roughly 20–30 cents in tokens.{% endif %}
-</p>
 
 {% if error %}<p class="banner bad">{{ error }}</p>{% endif %}
 
