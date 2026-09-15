@@ -102,18 +102,21 @@ summary { cursor: pointer; color: var(--ink); font: 700 .87rem var(--font-body);
   background: var(--panel); color: var(--ink);
   font: 700 .92rem/1 var(--font-body); cursor: pointer; text-decoration: none;
   box-shadow: 4px 4px 0 0 var(--shadow-c);
-  margin-top: 20px;
+  margin: 20px 0;
   transition: transform .2s cubic-bezier(.34,1.56,.64,1), box-shadow .2s cubic-bezier(.34,1.56,.64,1),
               background-color .15s ease;
 }
-/* The 20px above is for a button ending a stacked form -- it fought the
-   buttons that share a row instead (.actions, .save-bar, the rail, the
-   header nav), which already space themselves with their own gap/flex. */
+/* inline-flex, not block -- it doesn't margin-collapse with the text above
+   or below it the way a paragraph would, so both sides need their own
+   margin or the side with none sits flush against its neighbour. The 20px
+   is for a button ending a stacked form; it fought the buttons that share a
+   row instead (.actions, .save-bar, the rail, the header nav), which already
+   space themselves with their own gap/flex. */
 .actions .btn, .actions button,
 .save-bar .btn, .save-bar button,
 .rail .btn, .rail button,
 .nav .btn, .nav button,
-.top .btn, .top button { margin-top: 0; }
+.top .btn, .top button { margin: 0; }
 .btn:hover, button:hover { transform: translate(-2px, -2px); box-shadow: 6px 6px 0 0 var(--shadow-c); }
 .btn:active, button:active { transform: translate(1px, 1px); box-shadow: 2px 2px 0 0 var(--shadow-c); }
 .btn-primary, button.btn-primary {
