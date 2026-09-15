@@ -50,5 +50,16 @@
   <h2>Or run it yourself</h2>
   <p class="hint">It's a small Python project — clone it, and your key and your
      resume never leave your machine.</p>
+  <pre class="doc">git clone https://github.com/Charrlllezz/resume-agent.git && cd resume-agent
+python -m venv .venv && .venv/bin/pip install -r requirements.txt
+.venv/bin/playwright install chromium
+echo "ANTHROPIC_API_KEY=sk-..." &gt; .env
+
+.venv/bin/python test_qa.py    # offline sanity check, runs against the sample resume
+.venv/bin/python app.py        # -&gt; http://127.0.0.1:5000</pre>
+  <p class="hint">Windows: use <code>.venv\Scripts\pip</code> /
+     <code>.venv\Scripts\python</code> instead of <code>.venv/bin/...</code>.</p>
+  <p><a href="https://github.com/Charrlllezz/resume-agent" target="_blank" rel="noopener">Full
+     source, README and setup notes on GitHub ↗</a></p>
 </section>
 {% endblock %}
