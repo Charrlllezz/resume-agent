@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Master resume · resume-agent{% endblock %}
-{% block topright %}<a class="btn" href="{{ url_for('index') }}">Tailor a posting</a>{% endblock %}
+{% block topright %}<a class="btn btn-secondary" href="{{ url_for('index') }}">Tailor a posting</a>{% endblock %}
 {% block body %}
 {# One resume is the finished state, not a step on the way to several. Once one
    is loaded this page leads with the way forward and demotes the upload form to
@@ -52,7 +52,7 @@
   <p class="sub">One resume is all this needs. Paste a job posting and it will
      pick from the work above, then check every claim back against it.</p>
   <div class="actions">
-    <a class="btn primary" href="{{ url_for('index') }}">Tailor a posting</a>
+    <a class="btn btn-primary" href="{{ url_for('index') }}">Tailor a posting</a>
   </div>
 </section>
 
@@ -77,7 +77,7 @@
   <p class="hint">This replaces what's loaded now. On the trial it also costs
      one of your free uploads.</p>
   {% endif %}
-  <button type="submit">Read it</button>
+  <button type="submit" class="btn btn-primary">Read it</button>
 </form>
 
 {% if loaded %}

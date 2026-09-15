@@ -21,12 +21,13 @@ primary_region = "sjc"
   force_https = true
   auto_stop_machines = "stop"
   auto_start_machines = true
-  # Scale to zero. Fly bills stopped machines for their rootfs only (cents a
-  # month), so an idle deployment is effectively free -- but sessions live in
-  # the machine's memory, so a stop signs out whoever was on it. That is the
-  # trade: an idle user re-enters their API key, and nobody pays for a warm
-  # machine nobody is using. Set this to 1 to keep one warm (~$5.70/month).
-  min_machines_running = 0
+  # One machine stays warm (~$5.70/month) so a session survives the minutes
+  # someone spends reading a result before their next click -- a stop mid-review
+  # used to silently drop them back to the sign-in page with no explanation.
+  # Fly can still start a second machine under real concurrent load; it is
+  # only the *idle* stop this disables. Set back to 0 to scale fully to zero
+  # and accept that trade again; the 401 handler explains it either way.
+  min_machines_running = 1
 
   [http_service.concurrency]
     type = "requests"

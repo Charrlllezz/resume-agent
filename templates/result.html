@@ -1,6 +1,5 @@
 {% extends "base.html" %}
 {% block title %}{{ job.company or 'Result' }} · resume-agent{% endblock %}
-{% block topright %}<a class="btn" href="{{ url_for('index') }}">New posting</a>{% endblock %}
 {% block body %}
 
 <section class="result-head">
@@ -10,12 +9,12 @@
   </div>
   <div class="verdicts">
     {% if r.assessment %}
-      <span class="badge fit-{{ r.verdict|lower }}">{{ r.verdict }} · {{ '%.0f'|format(r.score * 100) }}%</span>
+      <span class="stamp fit-{{ r.verdict|lower }}">{{ r.verdict }} · {{ '%.0f'|format(r.score * 100) }}%</span>
     {% endif %}
     {% if r.has_errors %}
-      <span class="badge bad">QA failed</span>
+      <span class="stamp bad">qa: failed</span>
     {% else %}
-      <span class="badge good">QA passed</span>
+      <span class="stamp good">qa: passed</span>
     {% endif %}
   </div>
 </section>
@@ -25,42 +24,32 @@
    output that don't trace back to your master resume. They're listed below.</p>
 {% endif %}
 
-<section class="actions">
-  <a class="btn primary" href="{{ url_for('job_pdf', job_id=job.id) }}">Download PDF</a>
-  <a class="btn" href="{{ url_for('job_html', job_id=job.id) }}" target="_blank">Open HTML</a>
-  {% if r.posting_url %}<a class="btn ghost" href="{{ r.posting_url }}" target="_blank" rel="noopener">The posting</a>{% endif %}
-</section>
-
-<section class="grid">
-
-  <article class="card">
-    <h2>Tracker row</h2>
-    <p class="hint">What a spreadsheet holds. Everything else on this page is
-       what it can't.</p>
-    <dl class="row">
-      {% for k, v in row.items() %}
-      <div><dt>{{ k }}</dt><dd>{{ v or '—' }}</dd></div>
-      {% endfor %}
-      <div><dt>Cost</dt><dd>${{ '%.3f'|format(r.cost) }} · {{ r.usage.calls }} calls</dd></div>
-    </dl>
-  </article>
-
-  <article class="card">
-    <h2>Role</h2>
-    <dl class="row">
-      <div><dt>Track</dt><dd>{{ r.analysis.get('track','—')|upper }}</dd></div>
-      <div><dt>Tone</dt><dd>{{ r.analysis.get('tone','—') }}</dd></div>
-      <div><dt>Stage</dt><dd>{{ r.analysis.get('company_stage','—')|capitalize }}</dd></div>
-      <div><dt>Flavor</dt><dd>{{ r.analysis.get('role_flavor','—') }}</dd></div>
-    </dl>
-    <h3>Themes</h3>
-    <ul class="chips">{% for t in r.analysis.get('key_themes', []) %}<li>{{ t }}</li>{% endfor %}</ul>
-  </article>
-
-</section>
+{# Same stages, same order, as the list that filled in on the "working" page a
+   moment ago -- it stands here as the page's own table of contents, in the
+   order the page itself reads: should you apply, then the resume that
+   argues for it, then what backs both up. Sticky, and "New posting" rides
+   along on the same bar -- it used to live only in the header, which scrolls
+   out of reach the moment you start reading, so the only way back to start
+   another posting was scrolling all the way back to the top. #}
+<div class="rail" id="rail">
+  <ul class="rail-steps">
+    {% if assessments %}<li><a href="#fit" data-target="fit"><span class="dot"></span>Fit</a></li>{% endif %}
+    <li><a href="#resume" data-target="resume"><span class="dot"></span>Resume</a></li>
+    <li><a href="#qa" data-target="qa"><span class="dot"></span>QA</a></li>
+    {% if r.tailored.get('changes_summary') %}<li><a href="#changes" data-target="changes"><span class="dot"></span>Changes</a></li>{% endif %}
+  </ul>
+  <a class="btn btn-primary new-posting" href="{{ url_for('index') }}">+ New posting</a>
+</div>
 
 {% if assessments %}
-<section class="card">
+<section class="section" id="fit">
+  {% if r.assessment %}
+  <div class="verdict-stamp">
+    <p class="big fit-{{ r.verdict|lower }}">{{ r.verdict }}<span>{{ '%.0f'|format(r.score * 100) }}%</span></p>
+    <p class="hint">of the posting's requirements this resume can back up
+       {% if r.posting_url %}— <a href="{{ r.posting_url }}" target="_blank" rel="noopener">read the posting</a>{% endif %}.</p>
+  </div>
+  {% endif %}
   <h2>Fit, requirement by requirement</h2>
   <p class="hint">The model has to quote your resume for anything it calls met.
      That's what makes the verdict auditable rather than a vibe.</p>
@@ -78,39 +67,47 @@
 </section>
 {% endif %}
 
-<section class="grid">
-  <article class="card">
-    <h2>QA</h2>
-    <p class="hint">Every bullet, metric, skill, title and date traced back to
-       <code>{{ 'master_resume.json' }}</code>. Deterministic — no model judges
-       its own output here.</p>
-    {% if not r.issues %}<p class="none">Nothing flagged.</p>{% endif %}
-    {% for level, items in grouped.items() if items %}
-    <h3 class="lvl {{ level|lower }}">{{ level }} <span>{{ items|length }}</span></h3>
-    <ul class="findings">
-      {% for i in items %}
-      <li><code>{{ i.check }}</code> {{ i.message }}</li>
-      {% endfor %}
-    </ul>
-    {% endfor %}
-  </article>
+<section class="section preview" id="resume">
+  <div class="preview-head">
+    <h2>The resume</h2>
+    <p class="hint edit-hint" hidden>Click any title, bullet, date or skill to
+       change it. Saving re-runs the same provenance check as everything
+       else — an edit that doesn't trace back to your master resume will be
+       flagged just like a generated one.</p>
+  </div>
+  <div class="actions">
+    <a class="btn btn-primary" href="{{ url_for('job_pdf', job_id=job.id) }}" id="download-pdf">Download PDF<span class="btn-icon">↓</span></a>
+    <button type="button" class="btn btn-secondary" id="edit-toggle"><span class="btn-icon btn-icon-outline">✎</span><span id="edit-toggle-label">Edit resume</span></button>
+    <a class="btn btn-ghost" href="{{ url_for('job_html', job_id=job.id) }}" target="_blank" rel="noopener" id="open-html">Open HTML<span class="btn-icon btn-icon-outline">↗</span></a>
+  </div>
+  <div class="frame">
+    <iframe id="resume-frame" src="{{ url_for('job_html', job_id=job.id) }}" title="Tailored resume"></iframe>
+  </div>
+  <div class="save-bar" id="save-bar" hidden>
+    <span class="save-status" id="save-status"></span>
+    <button type="button" class="btn btn-ghost" id="discard-edit">Discard</button>
+    <button type="button" class="btn btn-primary" id="save-edit">Save changes</button>
+  </div>
+</section>
 
-  <article class="card">
-    <h2>ATS keywords</h2>
-    {% set missing = r.missing_keywords() %}
-    {% set total = r.analysis.get('ats_keywords', [])|length %}
-    <p class="big">{{ total - missing|length }}<span>/{{ total }}</span></p>
-    <p class="hint">Present in the tailored output. The count isn't comparable
-       between postings — read the misses.</p>
-    {% if missing %}
-    <h3>Not present</h3>
-    <ul class="chips miss">{% for k in missing %}<li>{{ k }}</li>{% endfor %}</ul>
-    {% endif %}
-  </article>
+<section class="section" id="qa">
+  <h2>QA</h2>
+  <p class="hint">Every bullet, metric, skill, title and date traced back to
+     <code>{{ 'master_resume.json' }}</code>. Deterministic — no model judges
+     its own output here. Re-runs automatically after a hand edit is saved.</p>
+  {% if not r.issues %}<p class="none">Nothing flagged.</p>{% endif %}
+  {% for level, items in grouped.items() if items %}
+  <h3 class="lvl {{ level|lower }}">{{ level }} <span>{{ items|length }}</span></h3>
+  <ul class="findings">
+    {% for i in items %}
+    <li><code>{{ i.check }}</code> {{ i.message }}</li>
+    {% endfor %}
+  </ul>
+  {% endfor %}
 </section>
 
 {% if r.tailored.get('changes_summary') %}
-<section class="card">
+<section class="section" id="changes">
   <h2>What it changed, and why</h2>
   <ul class="decisions">
     {% for c in r.tailored.changes_summary %}<li>{{ c }}</li>{% endfor %}
@@ -118,9 +115,199 @@
 </section>
 {% endif %}
 
-<section class="card preview">
-  <h2>The resume</h2>
-  <iframe src="{{ url_for('job_html', job_id=job.id) }}" title="Tailored resume"></iframe>
-</section>
+{% set missing = r.missing_keywords() %}
+{% set total = r.analysis.get('ats_keywords', [])|length %}
+<details class="card">
+  <summary>ATS keywords — {{ total - missing|length }}/{{ total }} present</summary>
+  <p class="hint">The count isn't comparable between postings — read the misses.</p>
+  {% if missing %}
+  <h3>Not present</h3>
+  <ul class="chips miss">{% for k in missing %}<li>{{ k }}</li>{% endfor %}</ul>
+  {% endif %}
+</details>
+
+<details class="card">
+  <summary>Run details</summary>
+  <div class="grid" style="margin-top:14px">
+    <article>
+      <h3>Tracker row</h3>
+      <p class="hint">What a spreadsheet holds. Everything else on this page is
+         what it can't.</p>
+      <dl class="row">
+        {% for k, v in row.items() %}
+        <div><dt>{{ k }}</dt><dd>{{ v or '—' }}</dd></div>
+        {% endfor %}
+        <div><dt>Cost</dt><dd>${{ '%.3f'|format(r.cost) }} · {{ r.usage.calls }} calls</dd></div>
+      </dl>
+    </article>
+    <article>
+      <h3>Role</h3>
+      <dl class="row">
+        <div><dt>Track</dt><dd>{{ r.analysis.get('track','—')|upper }}</dd></div>
+        <div><dt>Tone</dt><dd>{{ r.analysis.get('tone','—') }}</dd></div>
+        <div><dt>Stage</dt><dd>{{ r.analysis.get('company_stage','—')|capitalize }}</dd></div>
+        <div><dt>Flavor</dt><dd>{{ r.analysis.get('role_flavor','—') }}</dd></div>
+      </dl>
+      <h3>Themes</h3>
+      <ul class="chips">{% for t in r.analysis.get('key_themes', []) %}<li>{{ t }}</li>{% endfor %}</ul>
+    </article>
+  </div>
+</details>
+
+<script>
+(function () {
+  const frame = document.getElementById('resume-frame');
+  const editToggle = document.getElementById('edit-toggle');
+  const editToggleLabel = document.getElementById('edit-toggle-label');
+  const editHint = document.querySelector('.edit-hint');
+  const saveBar = document.getElementById('save-bar');
+  const saveBtn = document.getElementById('save-edit');
+  const discardBtn = document.getElementById('discard-edit');
+  const status = document.getElementById('save-status');
+  const downloadPdf = document.getElementById('download-pdf');
+  const openHtml = document.getElementById('open-html');
+  const originalSrc = frame.getAttribute('src');
+  let editing = false;
+
+  function blockWhileEditing(e) {
+    e.preventDefault();
+    status.textContent = 'Save or discard your edit first — that link only '
+      + 'has the version from before you started.';
+    saveBar.classList.add('flash');
+    setTimeout(() => saveBar.classList.remove('flash'), 900);
+  }
+
+  function fieldsIn(doc) {
+    return doc.querySelectorAll('[data-path]');
+  }
+
+  function enterEdit() {
+    const doc = frame.contentDocument;
+    if (!doc) return;
+    let style = doc.getElementById('edit-mode-style');
+    if (!style) {
+      style = doc.createElement('style');
+      style.id = 'edit-mode-style';
+      style.textContent = '[data-path]{cursor:text;border-radius:3px;} ' +
+        '[data-path]:hover{outline:1.5px dashed rgba(139,92,246,.5);outline-offset:2px;} ' +
+        '[data-path]:focus{outline:2px solid #8B5CF6;outline-offset:2px;background:rgba(139,92,246,.08);}';
+      doc.head.appendChild(style);
+    }
+    fieldsIn(doc).forEach((el) => {
+      el.setAttribute('contenteditable', 'true');
+      el.addEventListener('keydown', blockNewline);
+      el.addEventListener('paste', pastePlainText);
+    });
+    saveBar.hidden = false;
+    editHint.hidden = false;
+    editToggleLabel.textContent = 'Editing…';
+    editToggle.disabled = true;
+    downloadPdf.addEventListener('click', blockWhileEditing);
+    openHtml.addEventListener('click', blockWhileEditing);
+    downloadPdf.classList.add('disabled-link');
+    openHtml.classList.add('disabled-link');
+    editing = true;
+  }
+
+  function exitEdit() {
+    const doc = frame.contentDocument;
+    if (doc) {
+      fieldsIn(doc).forEach((el) => {
+        el.removeAttribute('contenteditable');
+        el.removeEventListener('keydown', blockNewline);
+        el.removeEventListener('paste', pastePlainText);
+      });
+    }
+    saveBar.hidden = true;
+    editHint.hidden = true;
+    editToggleLabel.textContent = 'Edit resume';
+    editToggle.disabled = false;
+    downloadPdf.removeEventListener('click', blockWhileEditing);
+    openHtml.removeEventListener('click', blockWhileEditing);
+    downloadPdf.classList.remove('disabled-link');
+    openHtml.classList.remove('disabled-link');
+    status.textContent = '';
+    editing = false;
+  }
+
+  function blockNewline(e) {
+    // Every field here is a single line -- a title, a date, one bullet.
+    // Splitting one into two is "add a bullet", a different feature.
+    if (e.key === 'Enter') e.preventDefault();
+  }
+
+  function pastePlainText(e) {
+    e.preventDefault();
+    const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+    document.execCommand('insertText', false, text.replace(/\n/g, ' '));
+  }
+
+  function collectEdits() {
+    const doc = frame.contentDocument;
+    const edits = {};
+    fieldsIn(doc).forEach((el) => {
+      edits[el.getAttribute('data-path')] = el.innerText.trim();
+    });
+    return edits;
+  }
+
+  editToggle.addEventListener('click', enterEdit);
+
+  discardBtn.addEventListener('click', () => {
+    frame.setAttribute('src', originalSrc);
+    exitEdit();
+  });
+
+  saveBtn.addEventListener('click', async () => {
+    const edits = collectEdits();
+    saveBtn.disabled = true;
+    discardBtn.disabled = true;
+    status.textContent = 'Saving…';
+    try {
+      const res = await fetch('{{ url_for("job_edit", job_id=job.id) }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(edits),
+      });
+      const ctype = res.headers.get('content-type') || '';
+      if (!res.ok || !ctype.includes('json')) {
+        throw new Error(res.status === 401 || !ctype.includes('json')
+          ? 'Your session timed out. Reload the page and sign in again — this edit was not saved.'
+          : ('Save failed (' + res.status + ').'));
+      }
+      status.textContent = 'Saved — reloading…';
+      // Otherwise the reload this line causes is itself an unload while
+      // editing=true, and the guard below throws up "Leave site?" on our
+      // own successful save.
+      editing = false;
+      window.location.reload();
+    } catch (err) {
+      status.textContent = err.message;
+      saveBtn.disabled = false;
+      discardBtn.disabled = false;
+    }
+  });
+
+  window.addEventListener('beforeunload', (e) => {
+    if (editing) { e.preventDefault(); e.returnValue = ''; }
+  });
+
+  // The rail marks which section is on screen -- motion that answers
+  // scrolling, not a decorative entrance.
+  const railLinks = document.querySelectorAll('#rail a');
+  if (railLinks.length) {
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        const link = document.querySelector(`#rail a[data-target="${entry.target.id}"]`);
+        if (link) link.classList.toggle('active', entry.isIntersecting);
+      });
+    }, { rootMargin: '-40% 0px -55% 0px' });
+    railLinks.forEach((a) => {
+      const el = document.getElementById(a.dataset.target);
+      if (el) observer.observe(el);
+    });
+  }
+})();
+</script>
 
 {% endblock %}

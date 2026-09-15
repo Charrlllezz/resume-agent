@@ -63,7 +63,7 @@ def bucket(row: dict) -> str:
 
 def load_rows(path: Path) -> list:
     rows = []
-    for line in path.read_text().splitlines()[1:]:
+    for line in path.read_text(encoding="utf-8").splitlines()[1:]:
         if not line.strip():
             continue
         p = (line.split("\t") + [""] * 4)[:4]
@@ -93,8 +93,8 @@ def main():
         rows = rows[: args.limit]
 
     cache = {} if args.refresh else (
-        json.loads(CACHE.read_text()) if CACHE.exists() else {})
-    resume = json.loads(tr.MASTER_RESUME.read_text())
+        json.loads(CACHE.read_text(encoding="utf-8")) if CACHE.exists() else {})
+    resume = json.loads(tr.MASTER_RESUME.read_text(encoding="utf-8"))
     client = tr.make_client()
 
     # A cached error is not completed work -- it cost nothing and the cause is
@@ -123,7 +123,7 @@ def main():
             print(f"      FAILED: {type(e).__name__}: {e}", flush=True)
             cache[row["url"]] = {**row, "verdict": "Error",
                                  "reason": f"{type(e).__name__}: {e}"[:160]}
-            CACHE.write_text(json.dumps(cache, indent=2))
+            CACHE.write_text(json.dumps(cache, indent=2), encoding="utf-8")
             continue
 
         cache[row["url"]] = {**row, "role_title": analysis.get("role_title", ""),
@@ -135,7 +135,7 @@ def main():
                                        if a.get("status") == "unmet"]}
         # Written per role, not at the end: a sweep that dies partway should
         # cost the roles it did not reach, not the ones it already paid for.
-        CACHE.write_text(json.dumps(cache, indent=2))
+        CACHE.write_text(json.dumps(cache, indent=2), encoding="utf-8")
         print(f"      {assessment['verdict']} ({assessment['score']:.0%}) "
               f"| {time.time() - started:.0f}s", flush=True)
 
@@ -161,7 +161,7 @@ def main():
     counts = {b: sum(1 for r in results if r["bucket"] == b) for b in BUCKETS}
     print("\n" + "  ".join(f"{b}: {n}" for b, n in counts.items() if n))
 
-    with open(args.out, "w") as f:
+    with open(args.out, "w", encoding="utf-8") as f:
         f.write("bucket\ttrack\tcompany\ttitle\turl\tgaps\n")
         for r in results:
             f.write(f"{r['bucket']}\t{r['track']}\t{r['company']}\t{r['title']}\t"

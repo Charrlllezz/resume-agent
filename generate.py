@@ -46,7 +46,7 @@ def resume_prefix() -> str:
     """
     import json
     import tailor_resume as tr
-    name = json.loads(tr.MASTER_RESUME.read_text())["contact"]["name"]
+    name = json.loads(tr.MASTER_RESUME.read_text(encoding="utf-8"))["contact"]["name"]
     return f"{clean(name)}_Resume"
 
 # One folder holding only the things you send. The repo root also holds source,
@@ -102,7 +102,7 @@ def main():
     OUT_DIR.mkdir(exist_ok=True)
     want = {b.strip() for b in args.buckets.split(",")}
     rows = []
-    for line in Path(args.file).read_text().splitlines()[1:]:
+    for line in Path(args.file).read_text(encoding="utf-8").splitlines()[1:]:
         if not line.strip():
             continue
         p = (line.split("\t") + [""] * 6)[:6]

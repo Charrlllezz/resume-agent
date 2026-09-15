@@ -4,16 +4,19 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}resume-agent{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
 <header class="top">
-  <a class="wordmark" href="{{ url_for('index') }}">resume<span>-agent</span></a>
+  <a class="wordmark" href="{{ url_for('index') }}"><span class="mark" aria-hidden="true">✓</span>resume<span>·agent</span></a>
   <nav class="nav">
     {% block topright %}{% endblock %}
     {% if hosted %}
     <form method="post" action="{{ url_for('signout') }}" class="inline">
-      <button class="btn ghost" type="submit">Sign out</button>
+      <button class="btn btn-ghost" type="submit">Sign out</button>
     </form>
     {% endif %}
   </nav>

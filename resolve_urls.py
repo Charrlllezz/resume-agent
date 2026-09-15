@@ -308,7 +308,7 @@ def main():
     args = ap.parse_args()
 
     rows = []
-    for line in Path(args.file).read_text().splitlines()[1:]:
+    for line in Path(args.file).read_text(encoding="utf-8").splitlines()[1:]:
         if not line.strip():
             continue
         p = (line.split("\t") + [""] * 4)[:4]
@@ -372,7 +372,7 @@ def main():
                         print(f"          ~ {c['title'][:56]}{lvl}", flush=True)
         browser.close()
 
-    with open(args.out, "w") as f:
+    with open(args.out, "w", encoding="utf-8") as f:
         f.write("track\tcompany\ttitle\turl\n")
         for r in resolved:
             track = "cs" if re.search(
@@ -381,14 +381,14 @@ def main():
             f.write(f"{track}\t{r['company']}\t{r['title']}\t{r['url']}\n")
 
     Path(args.out.replace(".tsv", "_unresolved.json")).write_text(
-        json.dumps(unresolved, indent=2))
+        json.dumps(unresolved, indent=2), encoding="utf-8")
 
     # Suggestions, kept in their own file: these are same-family guesses, not
     # matches, and they must never flow into the tailoring input unreviewed.
     sugg = [(u, c) for u in unresolved for c in u.get("candidates", [])]
     if sugg:
         cand_path = args.out.replace(".tsv", "_candidates.tsv")
-        with open(cand_path, "w") as f:
+        with open(cand_path, "w", encoding="utf-8") as f:
             f.write("company\tsaved_title\tcandidate_title\tsame_level\turl\n")
             for u, c in sugg:
                 f.write(f"{u['company']}\t{u['title']}\t{c['title']}\t"

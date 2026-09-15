@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block topright %}<a class="btn" href="{{ url_for('resume_page') }}">Master resume</a>{% endblock %}
+{% block topright %}<a class="btn btn-secondary" href="{{ url_for('resume_page') }}">Master resume</a>{% endblock %}
 {% block body %}
 <section class="hero">
   <h1>Tailor a resume to one posting</h1>
@@ -40,7 +40,7 @@
   <label for="company">Company <span class="opt">optional — overrides what's read off the page</span></label>
   <input id="company" name="company" type="text" placeholder="Acme">
 
-  <button type="submit">Tailor it</button>
+  <button type="submit" class="btn btn-primary">Tailor it</button>
 </form>
 
 <section class="loaded">

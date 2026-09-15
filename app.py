@@ -116,7 +116,7 @@ def bootstrap_local():
     tr.load_env()
     s = sessions.STORE.create()
     s.api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-    s.resume = json.loads(tr.MASTER_RESUME.read_text())
+    s.resume = json.loads(tr.MASTER_RESUME.read_text(encoding="utf-8"))
     return s
 
 
@@ -413,6 +413,70 @@ def job_pdf(job_id):
                     headers={"Content-Disposition": f'attachment; filename="{name}.pdf"'})
 
 
+def _apply_edits(tailored: dict, edits: dict) -> None:
+    """Write hand-edited text back into the tailored structure, keyed by the
+    same data-path the preview marks each field with.
+
+    Anything malformed, out of range, or blank is skipped rather than raising
+    -- a stray or empty field here must never cost someone the rest of an
+    edit, and a title cleared by an accidental select-all should not silently
+    blank a resume.
+    """
+    def text(key):
+        v = edits.get(key)
+        return v.strip() if isinstance(v, str) and v.strip() else None
+
+    v = text("headline")
+    if v is not None:
+        tailored["headline"] = v
+
+    for i, role in enumerate(tailored.get("experience", [])):
+        for field in ("title", "company", "location", "dates"):
+            v = text(f"experience.{i}.{field}")
+            if v is not None:
+                role[field] = v
+        for j in range(len(role.get("bullets", []))):
+            v = text(f"experience.{i}.bullets.{j}")
+            if v is not None:
+                role["bullets"][j] = v
+
+    for gi, (_group, items) in enumerate(tailored.get("skills", {}).items()):
+        for si in range(len(items)):
+            v = text(f"skills.{gi}.{si}")
+            if v is not None:
+                items[si] = v
+
+
+@app.post("/job/<job_id>/edit")
+def job_edit(job_id):
+    """Hand edits, saved and re-checked the same way a generated draft is.
+
+    Free and fast: re-rendering and re-QAing are both local and deterministic,
+    and the PDF is a Chromium print rather than a model call, so a save costs
+    nothing and touches no API key. The fit verdict is not recomputed -- it
+    judges whether the underlying experience satisfies the posting, which a
+    wording tweak does not change, and re-running it would spend real money on
+    every keystroke's save.
+    """
+    job = _job(job_id)
+    if not job.result:
+        abort(404)
+    edits = request.get_json(silent=True)
+    if not isinstance(edits, dict):
+        abort(400)
+
+    _apply_edits(job.result.tailored, edits)
+    resume = current().resume
+    job.result.html = tr.render_html(job.result.tailored, resume)
+    try:
+        job.result.pdf = pipeline.LocalRenderer().pdf(job.result.html)
+    except Exception:
+        pass  # the edit still saved; the PDF just lags until the next one
+    job.result.issues = qa.verify(job.result.tailored, resume,
+                                  job.result.analysis, job.result.html)
+    return jsonify(ok=True, has_errors=job.result.has_errors)
+
+
 # ---------------------------------------------------------------------------
 # Ingestion: upload a resume, review what was read out of it, commit it
 # ---------------------------------------------------------------------------
@@ -614,7 +678,15 @@ def admin_trial():
 
 @app.errorhandler(401)
 def unauthorized(_):
-    return redirect(url_for("start_page"))
+    # The one thing every 401 here actually means: g.session was never set,
+    # which happens when the cookie names a session the store has never heard
+    # of -- almost always because the machine went idle and Fly stopped it
+    # (see fly.toml). Landing back on /start with no explanation reads as a
+    # broken button, not an expired session, so say which one it was.
+    return redirect(url_for("start_page", error=(
+        "Your session timed out — the server was idle and restarted, which "
+        "clears sessions to keep hosting free. Sign back in to continue; "
+        "anything you hadn't downloaded yet is gone.")))
 
 
 @app.errorhandler(413)

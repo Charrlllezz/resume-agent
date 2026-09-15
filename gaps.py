@@ -63,7 +63,7 @@ def main():
     args = ap.parse_args()
 
     rows = [r for r in _load(Path(args.file))]
-    resume = json.loads(tr.MASTER_RESUME.read_text())
+    resume = json.loads(tr.MASTER_RESUME.read_text(encoding="utf-8"))
     hay = resume_text(resume)
     client = tr.make_client()
 
@@ -122,12 +122,13 @@ def main():
 
     if args.json:
         Path(args.json).write_text(json.dumps(
-            {"records": records, "gaps": gaps, "covered": have}, indent=2))
+            {"records": records, "gaps": gaps, "covered": have}, indent=2),
+            encoding="utf-8")
         print(f"\nraw -> {args.json}")
 
 
 def _load(path: Path):
-    for line in path.read_text().splitlines():
+    for line in path.read_text(encoding="utf-8").splitlines():
         if not line.strip() or line.startswith("#"):
             continue
         parts = (line.split("\t") + [""] * 4)[:4]

@@ -39,7 +39,7 @@ CACHE = Path("compare_cache.json")
 
 def load_rows(path: Path) -> list:
     rows = []
-    for line in path.read_text().splitlines():
+    for line in path.read_text(encoding="utf-8").splitlines():
         if not line.strip() or line.startswith("#"):
             continue
         parts = line.split("\t")
@@ -184,11 +184,11 @@ def main():
     args = ap.parse_args()
 
     rows = load_rows(Path(args.file))
-    resume = json.loads(tr.MASTER_RESUME.read_text())
+    resume = json.loads(tr.MASTER_RESUME.read_text(encoding="utf-8"))
     client = tr.make_client()
 
     cache = {} if args.refresh else (
-        json.loads(CACHE.read_text()) if CACHE.exists() else {})
+        json.loads(CACHE.read_text(encoding="utf-8")) if CACHE.exists() else {})
     cached = sum(1 for r in rows if r["url"] in cache)
     if cached:
         print(f"{cached}/{len(rows)} already cached -- rerun with --refresh to redo\n")
@@ -215,11 +215,11 @@ def main():
         # Written per role: a wedged role should cost the roles it did not
         # reach, not the ones already paid for.
         cache[row["url"]] = r
-        CACHE.write_text(json.dumps(cache, indent=2))
+        CACHE.write_text(json.dumps(cache, indent=2), encoding="utf-8")
 
     report(results, resume)
     if args.json:
-        Path(args.json).write_text(json.dumps(results, indent=2))
+        Path(args.json).write_text(json.dumps(results, indent=2), encoding="utf-8")
         print(f"\nraw results -> {args.json}")
 
 

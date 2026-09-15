@@ -62,7 +62,7 @@ METRIC_RE = re.compile(
 def load_env():
     env_file = Path(__file__).parent / ".env"
     if env_file.exists():
-        for line in env_file.read_text().splitlines():
+        for line in env_file.read_text(encoding="utf-8").splitlines():
             line = line.strip()
             if line and not line.startswith("#") and "=" in line:
                 key, _, value = line.partition("=")
@@ -893,7 +893,7 @@ def body_html(spec: dict, c: dict, tailored: dict, nodes_html: list,
         f'<span class="school">{e(edu["school"])} &#183; {e(edu["year"])}</span></div>')
 
     hero_open = f'<header class="hero"><h1>{e(c["name"])}</h1>'
-    tagline = f'<div class="tagline">{e(tailored["headline"])}</div>'
+    tagline = f'<div class="tagline" data-path="headline">{e(tailored["headline"])}</div>'
 
     tail = "".join(h for _k, h in extras)
     if spec.get("layout") != "two-column":
@@ -930,18 +930,18 @@ def render_html(tailored: dict, resume: dict) -> str:
     for i, role in enumerate(tailored["experience"]):
         status = "current" if i == 0 else "past"
         bullets_html = "\n".join(
-            f'            <li>{highlight_metrics(b)}</li>'
-            for b in role["bullets"]
+            f'            <li data-path="experience.{i}.bullets.{j}">{highlight_metrics(b)}</li>'
+            for j, b in enumerate(role["bullets"])
         )
         nodes_html.append(f"""
       <article class="node" data-status="{status}">
         <span class="port" aria-hidden="true"></span>
         <div class="card">
           <div class="card-head">
-            <h3>{html_lib.escape(role["title"])}</h3>
-            <span class="at">{html_lib.escape(role["company"])}</span>
-            <span class="loc">{html_lib.escape(role["location"])}</span>
-            <span class="dates">{html_lib.escape(role["dates"])}</span>
+            <h3 data-path="experience.{i}.title">{html_lib.escape(role["title"])}</h3>
+            <span class="at" data-path="experience.{i}.company">{html_lib.escape(role["company"])}</span>
+            <span class="loc" data-path="experience.{i}.location">{html_lib.escape(role["location"])}</span>
+            <span class="dates" data-path="experience.{i}.dates">{html_lib.escape(role["dates"])}</span>
           </div>
           <ul class="bullets">
 {bullets_html}
@@ -954,12 +954,12 @@ def render_html(tailored: dict, resume: dict) -> str:
     # which then prints under a section heading also called SKILLS. One of
     # them has to go.
     only_group = len(tailored["skills"]) == 1
-    for section, skills in tailored["skills"].items():
+    for gi, (section, skills) in enumerate(tailored["skills"].items()):
         if only_group and section.strip().lower() in ("skills", "skill", ""):
             section = ""
         pills = "\n".join(
-            f'            <span class="pill">{html_lib.escape(s)}</span>'
-            for s in skills
+            f'            <span class="pill" data-path="skills.{gi}.{si}">{html_lib.escape(s)}</span>'
+            for si, s in enumerate(skills)
         )
         skills_html.append(f"""
       <div class="skill-group">
@@ -1156,7 +1156,7 @@ def main():
 
     posting_text = ""
     if args.file:
-        posting_text = Path(args.file).read_text()
+        posting_text = Path(args.file).read_text(encoding="utf-8")
     elif args.text:
         posting_text = args.text
     elif not args.url and not sys.stdin.isatty():
@@ -1165,7 +1165,7 @@ def main():
         parser.print_help()
         sys.exit(1)
 
-    resume = json.loads(MASTER_RESUME.read_text())
+    resume = json.loads(MASTER_RESUME.read_text(encoding="utf-8"))
     client = make_client()
 
     def show(stage, message, result):
@@ -1211,7 +1211,7 @@ def main():
     else:
         html_path, pdf_path = Path(f"{stem}.html"), Path(f"{stem}_Scroll.pdf")
 
-    html_path.write_text(run.html)
+    html_path.write_text(run.html, encoding="utf-8")
     print(f"\nHTML written to: {html_path}")
     pdf_path.write_bytes(run.pdf)
     print(f"PDF written to:  {pdf_path}")
