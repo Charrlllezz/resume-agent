@@ -11,6 +11,7 @@ module knowing what a request is.
 
 import tempfile
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import date
@@ -20,6 +21,14 @@ import fit
 import qa
 import tailor_resume as tr
 import usage
+
+# A generous ceiling on one run, past which something is clearly wrong rather
+# than just slow. Each model call already bounds itself to ~250s worst case
+# (120s timeout, one retry, plus backoff); fetch adds up to ~45s more (30s
+# rendered + 15s raw fallback); PDF printing has Playwright's own 30s default.
+# Stacked worst-case-but-still-legitimate is close to 10 minutes, so this
+# leaves real headroom above that before calling a run abnormal.
+RUN_DEADLINE_SECONDS = 720
 
 
 class LocalRenderer:
@@ -134,9 +143,28 @@ def _merge_usage(totals: dict, *others: dict) -> None:
             totals[key] += other.get(key, 0)
 
 
+def _check_deadline(deadline: float | None, stage: str) -> None:
+    """Refuse to start another stage once a run has clearly gone abnormal.
+
+    This cannot interrupt a call already in flight -- a single native call
+    that hangs past its own timeout keeps hanging no matter what this checks,
+    same limitation signal.alarm has off the main thread (see
+    in_main_thread()). What it does catch is the much more common case: three
+    calls that each retry-and-eventually-succeed instead of one that is truly
+    wedged, stacking up well past what a run should ever legitimately take.
+    """
+    if deadline is not None and time.monotonic() > deadline:
+        minutes = RUN_DEADLINE_SECONDS // 60
+        raise ValueError(
+            f"This run passed {minutes} minutes and was stopped before "
+            f"starting '{stage}' -- that's far past normal, so something is "
+            "stuck rather than just slow. Try again; if it keeps happening, "
+            "the posting or the API is likely having trouble.")
+
+
 def run(*, resume: dict, client, url: str = "", text: str = "", company: str = "",
         progress=None, do_qa: bool = True, want_pdf: bool = True,
-        renderer=None) -> Result:
+        renderer=None, deadline_seconds: float | None = RUN_DEADLINE_SECONDS) -> Result:
     """Run the pipeline once and return everything it produced.
 
     Raises on a hard failure (unreachable posting, malformed model output) so a
@@ -148,6 +176,7 @@ def run(*, resume: dict, client, url: str = "", text: str = "", company: str = "
     progress = progress or _noop
     renderer = renderer or LocalRenderer()
     result = Result(posting_url=url)
+    deadline = time.monotonic() + deadline_seconds if deadline_seconds else None
 
     # Per-run token accounting. Without this scope a server would report one
     # user's cost to another -- see usage_scope in tailor_resume.
@@ -167,6 +196,7 @@ def run(*, resume: dict, client, url: str = "", text: str = "", company: str = "
             progress("warn", "Posting looks too short — it may be login-walled "
                              "or bot-blocked. Paste the text instead.", result)
 
+        _check_deadline(deadline, "analyze")
         progress("analyze", "Reading the posting", result)
         result.analysis = tr.analyze_job(client, posting, resume)
         result.role_title = result.analysis.get("role_title", "")
@@ -176,6 +206,7 @@ def run(*, resume: dict, client, url: str = "", text: str = "", company: str = "
         # output, so they run as two concurrent model calls instead of two
         # sequential ones -- one of the three calls a run makes is effectively
         # free in wall-clock time.
+        _check_deadline(deadline, "fit and tailor")
         progress("fit", "Judging fit against your resume", result)
         progress("tailor", "Selecting and ordering bullets", result)
         with ThreadPoolExecutor(max_workers=2) as pool:
@@ -195,14 +226,17 @@ def run(*, resume: dict, client, url: str = "", text: str = "", company: str = "
 
         _merge_usage(totals, fit_usage, tailor_usage)
 
+        _check_deadline(deadline, "render")
         progress("render", "Rendering", result)
         result.html = tr.render_html(result.tailored, resume)
 
         if want_pdf:
+            _check_deadline(deadline, "pdf")
             progress("pdf", "Printing PDF", result)
             result.pdf = renderer.pdf(result.html)
 
         if do_qa:
+            _check_deadline(deadline, "qa")
             progress("qa", "Checking every claim against your master resume", result)
             result.issues = qa.verify(result.tailored, resume, result.analysis, result.html)
 
@@ -216,9 +250,9 @@ def run(*, resume: dict, client, url: str = "", text: str = "", company: str = "
 def in_main_thread() -> bool:
     """signal.alarm only works on the main thread.
 
-    tailor_resume.deadline() is the CLI's hard wall-clock bound, and calling it
-    from a worker thread raises ValueError rather than timing out. A server
-    relies on the client's own per-call timeout instead (120s, one retry),
-    which bounds a run without touching signals.
+    tailor_resume.deadline() is rank.py and compare.py's per-role sweep
+    budget, and calling it from a worker thread raises ValueError rather than
+    timing out -- it cannot be what bounds a server run, which is why run()
+    has its own signal-free deadline (RUN_DEADLINE_SECONDS) instead.
     """
     return threading.current_thread() is threading.main_thread()

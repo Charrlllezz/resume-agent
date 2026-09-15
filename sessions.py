@@ -32,6 +32,14 @@ SWEEP_EVERY = 5 * 60
 MAX_CONCURRENT_RUNS = int(os.environ.get("MAX_CONCURRENT_RUNS", "2"))
 RUN_SLOTS = threading.BoundedSemaphore(MAX_CONCURRENT_RUNS)
 
+# A slot a queued run cannot get within this window is not "very busy", it is
+# every slot held by a run that is itself stuck -- pipeline.RUN_DEADLINE_SECONDS
+# bounds how long a run can hold one, but nothing can force a slot's actual
+# release if the thread holding it is wedged in a native call that never
+# returns. Failing the wait cleanly at least stops a queued run from joining
+# it: a "the server is busy" error the person can retry, not a silent hang.
+SLOT_WAIT_SECONDS = int(os.environ.get("SLOT_WAIT_SECONDS", "300"))
+
 # One person should not be able to queue fifty runs on someone else's machine.
 MAX_RUNS_PER_SESSION = int(os.environ.get("MAX_RUNS_PER_SESSION", "40"))
 

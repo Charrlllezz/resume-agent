@@ -201,14 +201,22 @@ def _run_job(s: sessions.Session, job: Job, url: str, text: str, ip: str = ""):
     try:
         job.status = "queued"
         # Waits for a slot rather than launching a browser regardless. A few
-        # simultaneous Chromiums will exhaust a small machine.
-        with sessions.RUN_SLOTS:
+        # simultaneous Chromiums will exhaust a small machine. Bounded rather
+        # than a bare `with sessions.RUN_SLOTS:` -- every slot can end up held
+        # by a run that is stuck rather than merely busy, and a queued run
+        # should fail cleanly instead of waiting behind it forever.
+        if not sessions.RUN_SLOTS.acquire(timeout=sessions.SLOT_WAIT_SECONDS):
+            raise ValueError("The server is at capacity right now — please "
+                             "try again in a few minutes.")
+        try:
             job.status = "running"
             job.result = pipeline.run(
                 resume=s.resume, client=tr.make_client(s.key),
                 url=url, text=text, company=job.company,
                 progress=lambda stage, message, result: job.note(stage, message),
             )
+        finally:
+            sessions.RUN_SLOTS.release()
         job.company = job.result.company or job.company
         job.status = "done"
         if ip:
@@ -540,13 +548,26 @@ def resume_upload():
         # was really spent: an ingest that dies after the model call did cost
         # the host money, and the tokens are known either way.
         totals = usage.new()
+        # Distinct from job.note("analyze", ...) below, which fires before the
+        # slot wait purely to show "Reading the document" -- it cannot signal
+        # whether the model was actually reached, so billing needs its own flag.
+        started_ingest = False
         try:
             job.status = "running"
             job.note("analyze", "Reading the document")
-            with sessions.RUN_SLOTS, usage.scope() as acc:
-                totals = acc
-                draft, document, issues = ingest.ingest(
-                    tr.make_client(s.key), data, filename, track=track)
+            # See _run_job: a bare `with sessions.RUN_SLOTS:` waits forever if
+            # every slot is held by a run that is stuck rather than busy.
+            if not sessions.RUN_SLOTS.acquire(timeout=sessions.SLOT_WAIT_SECONDS):
+                raise ValueError("The server is at capacity right now — "
+                                 "please try again in a few minutes.")
+            started_ingest = True
+            try:
+                with usage.scope() as acc:
+                    totals = acc
+                    draft, document, issues = ingest.ingest(
+                        tr.make_client(s.key), data, filename, track=track)
+            finally:
+                sessions.RUN_SLOTS.release()
             s.drafts[draft_id] = {"draft": draft, "document": document,
                                   "issues": issues, "filename": filename}
             job.status = "done"
@@ -556,7 +577,13 @@ def resume_upload():
             traceback.print_exc()
         finally:
             if ip:
-                trial.LEDGER.settle("ingest", usage.cost(totals))
+                # A slot-wait timeout never reached the model -- give the free
+                # action back rather than charging someone for a server that
+                # was too busy, the same distinction _run_job makes.
+                if started_ingest:
+                    trial.LEDGER.settle("ingest", usage.cost(totals))
+                else:
+                    trial.give_back(s, ip, "ingest")
 
     threading.Thread(target=work, daemon=True).start()
     return redirect(url_for("resume_review", draft_id=draft_id))
