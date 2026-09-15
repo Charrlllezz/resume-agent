@@ -131,9 +131,14 @@ def _fetch_rendered(url: str) -> str:
         try:
             page.goto(url, wait_until="domcontentloaded", timeout=30000)
             try:
-                page.wait_for_load_state("networkidle", timeout=10000)
+                # A real posting settles in ~2s on the boards this was tested
+                # against; some keep a socket open (chat widgets, analytics
+                # beacons) and never go idle at all. 4s buys the ones that need
+                # it real settling time without paying the full old 10s wait on
+                # every run for boards that were never going to hit it.
+                page.wait_for_load_state("networkidle", timeout=4000)
             except Exception:
-                pass  # some boards keep a socket open; the DOM is usually ready
+                pass  # the DOM is usually ready even when this times out
 
             best = ""
             for selector in JOB_SELECTORS:

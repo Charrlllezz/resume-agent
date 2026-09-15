@@ -11,6 +11,7 @@ module knowing what a request is.
 
 import tempfile
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
@@ -104,6 +105,35 @@ def _noop(stage: str, message: str = "", result=None) -> None:
     pass
 
 
+def _isolated(fn, *args, **kwargs):
+    """Run fn under its own usage scope, for calling from a worker thread.
+
+    usage.scope() keys off a ContextVar, and a new thread starts with none of
+    the caller's context -- tokens recorded there would land in an accumulator
+    nothing ever reads, and a run's reported cost would quietly go missing.
+    Returning the thread's own totals lets the caller merge them back into its
+    own scope explicitly, after the thread has finished.
+    """
+    with usage.scope() as totals:
+        try:
+            value = fn(*args, **kwargs)
+        except Exception as e:
+            # A call that reached the API and then failed to parse still
+            # spent real tokens. Stash what was recorded on the exception
+            # itself -- once this scope exits on unwind, the ContextVar no
+            # longer points at `totals`, so a caller that only catches the
+            # exception has no other way back to it.
+            e.usage = dict(totals)
+            raise
+    return value, totals
+
+
+def _merge_usage(totals: dict, *others: dict) -> None:
+    for other in others:
+        for key in totals:
+            totals[key] += other.get(key, 0)
+
+
 def run(*, resume: dict, client, url: str = "", text: str = "", company: str = "",
         progress=None, do_qa: bool = True, want_pdf: bool = True,
         renderer=None) -> Result:
@@ -142,15 +172,28 @@ def run(*, resume: dict, client, url: str = "", text: str = "", company: str = "
         result.role_title = result.analysis.get("role_title", "")
         result.company = company or result.analysis.get("company", "")
 
+        # Fit and tailoring each need only result.analysis, not each other's
+        # output, so they run as two concurrent model calls instead of two
+        # sequential ones -- one of the three calls a run makes is effectively
+        # free in wall-clock time.
         progress("fit", "Judging fit against your resume", result)
-        try:
-            result.assessment = fit.assess(client, result.analysis, resume, tr.MODEL)
-        except Exception as e:
-            # The tailoring is independent of this and still worth producing.
-            progress("warn", f"Fit assessment failed ({type(e).__name__}: {e})", result)
-
         progress("tailor", "Selecting and ordering bullets", result)
-        result.tailored = tr.tailor_resume(client, resume, result.analysis, posting)
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            fit_future = pool.submit(
+                _isolated, fit.assess, client, result.analysis, resume, tr.MODEL)
+            tailor_future = pool.submit(
+                _isolated, tr.tailor_resume, client, resume, result.analysis, posting)
+
+            try:
+                result.assessment, fit_usage = fit_future.result()
+            except Exception as e:
+                # The tailoring is independent of this and still worth producing.
+                progress("warn", f"Fit assessment failed ({type(e).__name__}: {e})", result)
+                fit_usage = getattr(e, "usage", None) or usage.new()
+
+            result.tailored, tailor_usage = tailor_future.result()
+
+        _merge_usage(totals, fit_usage, tailor_usage)
 
         progress("render", "Rendering", result)
         result.html = tr.render_html(result.tailored, resume)

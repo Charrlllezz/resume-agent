@@ -21,8 +21,9 @@
   <p class="hint" id="note">
     {%- if failed %}<a href="{{ url_for('index') }}">Start over</a>
     {%- elif ingesting %}Reading a resume takes about 20–40 seconds.
-    {%- else %}A run takes about 40–90 seconds. Three model calls do the thinking;
-    a browser does the fetching and the printing.{% endif %}</p>
+    {%- else %}A run takes about 30–75 seconds. Three model calls do the
+    thinking — two of them run in parallel — and a browser does the fetching
+    and the printing.{% endif %}</p>
 </section>
 
 {% if not failed %}
