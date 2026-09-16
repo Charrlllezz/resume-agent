@@ -40,13 +40,16 @@ IC_CEILING = 3  # staff / principal / lead is reachable; manager+ is not
 # Split so the resume half can be cached. It is identical across every posting
 # in a sweep -- 58 roles meant paying full input price to re-send the same
 # ~3,900 tokens 58 times. The cacheable block must come first and stay
-# byte-identical between calls, so nothing per-role may leak into it.
-ASSESS_RESUME = """You are assessing whether a candidate should apply to a role.
+# byte-identical between calls, so nothing per-role may leak into it -- and it
+# must also stay byte-identical with tailor_resume's own cache block (see
+# tailor_resume.RESUME_CACHE_HEADER), since fit.assess and tailor_resume now
+# run concurrently against the same resume and only share a cache entry if the
+# whole prefix up to the breakpoint matches, not just the resume JSON inside
+# it. That is why the "you are assessing..." framing lives here in the task
+# half instead of next to the resume.
+ASSESS_TASK = """You are assessing whether a candidate should apply to a role.
 
-Here is the candidate's complete master resume:
-{resume}"""
-
-ASSESS_TASK = """The posting requires:
+The posting requires:
 {requirements}
 
 For EACH requirement, judge whether the resume evidences it. Return ONLY a JSON
@@ -120,13 +123,20 @@ def assess(client, analysis: dict, resume: dict, model: str) -> dict:
         }
 
     tr_mod = __import__("tailor_resume")
+    resume_for_prompt = tr_mod.resume_for_track(resume, analysis.get("track") or "")
+    resume_json = json.dumps(resume_for_prompt, separators=(",", ":"))
     response = tr_mod.send(
         client,
         model=model,
-        max_tokens=8000,
+        # A real run against the hosted trial (6 required_skills) used 980
+        # output tokens at low effort; 4000 leaves headroom for postings with
+        # many more requirements without paying for an 8000-token ceiling the
+        # response never approaches.
+        max_tokens=4000,
+        output_config={"effort": "low"},
         messages=[{"role": "user", "content": [
             {"type": "text",
-             "text": ASSESS_RESUME.format(resume=json.dumps(resume, indent=2)),
+             "text": tr_mod.RESUME_CACHE_HEADER.format(resume=resume_json),
              "cache_control": {"type": "ephemeral"}},
             {"type": "text",
              "text": ASSESS_TASK.format(

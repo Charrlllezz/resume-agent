@@ -11,6 +11,7 @@ Usage:
 
 import anthropic
 import argparse
+import copy
 import signal
 from contextlib import contextmanager
 import csv
@@ -242,6 +243,45 @@ TRACK_HINTS = {
 }
 
 
+# Shared verbatim with fit.ASSESS_TASK's cache breakpoint: Anthropic's cache
+# matches on the whole prefix up to the cache_control breakpoint, not on
+# substrings within it, so fit.assess and tailor_resume can only ever share a
+# cache entry if this exact string -- not just the resume JSON inside it -- is
+# byte-identical between the two calls. Role-specific framing ("you are
+# assessing..." / "you are a resume tailoring expert...") therefore lives in
+# each caller's task block, after the breakpoint, not here.
+RESUME_CACHE_HEADER = "Here is the candidate's complete master resume:\n{resume}"
+
+
+def resume_for_track(resume: dict, track: str) -> dict:
+    """A copy of resume holding only the track this call actually needs.
+
+    fit.assess and tailor_resume were each sending every track's bullets,
+    titles, and headlines -- gtm and cs and technical all at once -- when the
+    analysis has already picked one. The model still has to find the right
+    track in the pile; trimming it out front shrinks the prompt for free.
+
+    "hybrid", and any track this resume was never split by, fall back to the
+    untouched resume: hybrid deliberately draws on more than one track, and a
+    track with no data here has nothing to trim.
+    """
+    if track == "hybrid" or track not in tracks_for(resume):
+        return resume
+
+    trimmed = copy.deepcopy(resume)
+    headlines = trimmed.get("headlines") or {}
+    if track in headlines:
+        trimmed["headlines"] = {track: headlines[track]}
+    for role in trimmed.get("experience", []):
+        bullets = role.get("bullets") or {}
+        if track in bullets:
+            role["bullets"] = {track: bullets[track]}
+        titles = role.get("titles") or {}
+        if track in titles:
+            role["titles"] = {track: titles[track]}
+    return trimmed
+
+
 def tracks_for(resume: dict) -> list:
     """The track names this resume has actual content for, in a stable order.
 
@@ -338,29 +378,32 @@ def bullet_spec(resume: dict) -> str:
 
 
 def tailor_resume(client: anthropic.Anthropic, resume: dict, analysis: dict, job_posting: str) -> dict:
-    resume_block = json.dumps(resume, indent=2)
+    resume_for_prompt = resume_for_track(resume, analysis.get("track") or "")
+    resume_block = json.dumps(resume_for_prompt, separators=(",", ":"))
     analysis_block = json.dumps(analysis, indent=2)
 
     response = send(
         client,
         model=MODEL,
-        max_tokens=16000,
+        # A real run against the hosted trial (5-role resume) used 2105
+        # output tokens at low effort; 6000 leaves headroom for a longer
+        # resume or a wordier posting without paying for a 16000-token
+        # ceiling the response never approaches.
+        max_tokens=6000,
+        output_config={"effort": "low"},
         messages=[{
             "role": "user",
             "content": [
                 {
                     "type": "text",
-                    "text": (
-                        "You are a resume tailoring expert. "
-                        "Here is the master resume containing all bullet variations, "
-                        "title options, headline options, and skills pools:\n\n"
-                        f"{resume_block}"
-                    ),
+                    "text": RESUME_CACHE_HEADER.format(resume=resume_block),
                     "cache_control": {"type": "ephemeral"},
                 },
                 {
                     "type": "text",
-                    "text": f"""Job analysis:
+                    "text": f"""You are a resume tailoring expert.
+
+Job analysis:
 {analysis_block}
 
 Job posting excerpt (for context):
