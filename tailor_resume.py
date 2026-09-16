@@ -412,7 +412,7 @@ Job posting excerpt (for context):
 Tailor the resume for this specific role. Return ONLY a valid JSON object with these exact fields:
 
 {{
-  "headline": "selected or lightly adapted headline string",
+  "headline": "one pool headline, verbatim or lightly reworded -- never a new sentence",
   "experience": [
     {{
       "company": "company name",
@@ -448,7 +448,12 @@ Rules:
   if the master title lacks it) and the same underlying function. Reword the framing, not
   the job — "GTM Engineer" may become "GTM Systems Engineer", never "Director of GTM".
   If no honest rewording helps, use the master title verbatim.
-- Pick the headline that best matches the company stage and role tone
+- The "headline" field must be one of the strings under "headlines" above, used verbatim
+  or reworded only lightly (swap in a word or two of the posting's vocabulary) -- never a
+  new sentence written to describe this specific role. Pick whichever pool headline best
+  matches the company stage and role tone, the same way a title is reworked, not rewritten:
+  if no light edit genuinely improves the fit, use it verbatim. This holds even when the
+  pool has only one headline -- "adapting" it does not mean replacing what it says.
 - Adjust skills sections: emphasize what matches required_skills; drop or demote irrelevant items
 - Copy every skill string VERBATIM from the master skills pools. Reorder them, regroup them,
   rename a section heading — but never reword a skill itself. "LLMs" stays "LLMs"; it does not
