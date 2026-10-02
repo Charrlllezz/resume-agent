@@ -1115,7 +1115,17 @@ def generate_scroll_pdf(html_path: Path, pdf_path: Path):
         page = browser.new_page(viewport={"width": 844, "height": 900})
         page.goto(f"file://{html_path.absolute()}", wait_until="networkidle")
 
-        scroll_height = page.evaluate("document.documentElement.scrollHeight")
+        # Measure under print CSS, which is what page.pdf() lays out with.
+        # The screen layout is roughly twice as tall, and sizing the page to
+        # it left a blank tail under every resume. documentElement's
+        # scrollHeight never drops below the viewport, so measure the
+        # content box itself.
+        page.emulate_media(media="print")
+        scroll_height = page.evaluate("""() => {
+            const el = document.querySelector('.page');
+            return el ? Math.ceil(el.getBoundingClientRect().bottom) + 4
+                      : document.documentElement.scrollHeight;
+        }""")
 
         page.pdf(
             path=str(pdf_path),
